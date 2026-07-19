@@ -1,31 +1,29 @@
 package com.chatapplication.core.entities;
 
-import com.chatapplication.core.entities.enums.UserStatus;
+import com.chatapplication.core.entities.enums.RoomType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
 import jakarta.persistence.*;
+import jakarta.persistence.Id;
 import lombok.Data;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Data
 @Entity
-public class User {
+public class ChatRoom {
 
     @Id
     private UUID id;
 
-    @Column(unique = true, nullable = false)
-    private String username;
-
-    @Column(unique = true, nullable = false)
-    private String email;
-
     @Column(nullable = false)
-    private String password;
+    private String name;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private UserStatus status;
+    private RoomType type;
 
     private Instant createdAt;
 
@@ -33,7 +31,6 @@ public class User {
 
     private Instant deletedAt;
 
-    private Instant lastLogin;
-
-    private Long totalOnlineTime;
+    @OneToMany
+    private List<Participant> participants;
 }
