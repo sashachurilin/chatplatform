@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 @Data
@@ -16,15 +17,23 @@ public class Participant {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "room_id", nullable = false)
-    private ChatRoom room;
+    private ChatRoom chatRoom;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    private AppUser appUser;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ParticipantRole role;
 
     private Instant joinedAt;
+
+    private UUID chatRoomId() {
+        return Optional.ofNullable(chatRoom).map(ChatRoom::getId).orElse(null);
+    }
+
+    private UUID appUserId() {
+        return Optional.ofNullable(appUser).map(AppUser::getId).orElse(null);
+    }
 }

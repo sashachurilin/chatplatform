@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 @Data
@@ -15,7 +16,7 @@ public class UserActivity {
     private UUID id;
 
     @ManyToOne
-    private User user;
+    private AppUser appUser;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -28,5 +29,9 @@ public class UserActivity {
     private String userAgent;
 
     private Instant createdAt;
+
+    private UUID appUserId() {
+        return Optional.ofNullable(appUser).map(AppUser::getId).orElse(null);
+    }
 
 }

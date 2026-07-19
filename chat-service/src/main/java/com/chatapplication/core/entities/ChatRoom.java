@@ -9,6 +9,7 @@ import lombok.Data;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Data
@@ -33,4 +34,12 @@ public class ChatRoom {
 
     @OneToMany
     private List<Participant> participants;
+
+    public List<UUID> participantsIds() {
+        return Optional.ofNullable(participants)
+                .map(list -> list.stream()
+                        .map(Participant::getId)
+                        .toList())
+                .orElse(List.of());
+    }
 }

@@ -1,6 +1,6 @@
 package com.chatapplication.core.repositories;
 
-import com.chatapplication.core.entities.User;
+import com.chatapplication.core.entities.AppUser;
 import com.chatapplication.core.entities.enums.UserStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -8,15 +8,15 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface UserRepository extends JpaRepository<User, UUID> {
+public interface UserRepository extends JpaRepository<AppUser, UUID> {
 
-    Optional<User> findByUsername(String username);
+    Optional<AppUser> findByUsername(String username);
 
-    Optional<User> findByEmail(String email);
+    Optional<AppUser> findByEmail(String email);
 
-    List<User> findByStatus(UserStatus status);
+    List<AppUser> findByStatus(UserStatus status);
 
-    Optional<User> findByUserTag(String userTag);
+    Optional<AppUser> findByUserTag(String userTag);
 
-    Optional<User> findByUsernameAndPassword(String username, String password);
+    Optional<AppUser> findByUsernameAndPassword(String username, String password);
 }

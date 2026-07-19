@@ -9,7 +9,7 @@ import java.util.UUID;
 
 @Data
 @Entity
-public class User {
+public class AppUser {
 
     @Id
     private UUID id;

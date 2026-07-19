@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 @Data
@@ -45,4 +46,13 @@ public class Message {
     private Instant updatedAt;
 
     private Instant deletedAt;
+
+    private UUID participantID() {
+        return Optional.ofNullable(sender).map(Participant::getId).orElse(null);
+    }
+
+    private UUID chatRoomID() {
+        return Optional.ofNullable(chatRoom).map(ChatRoom::getId).orElse(null);
+    }
+
 }
