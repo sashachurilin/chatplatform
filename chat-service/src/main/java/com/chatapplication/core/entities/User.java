@@ -36,4 +36,17 @@ public class User {
     private Instant lastLogin;
 
     private Long totalOnlineTime;
+
+    @PrePersist
+    public void prePersist() {
+        if (id == null) id = UUID.randomUUID();
+        if (createdAt == null) createdAt = Instant.now();
+        if (status == null) status = UserStatus.OFFLINE;
+        if (totalOnlineTime == null) totalOnlineTime = 0L;
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        updatedAt = Instant.now();
+    }
 }
