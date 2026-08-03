@@ -10,9 +10,9 @@ import com.chatapplication.core.entities.enums.UserStatus;
 import java.time.Instant;
 import java.util.UUID;
 
-public class ModelMapper {
+public class EntityFactory {
 
-    private ModelMapper() {}
+    private EntityFactory() {}
 
     public static AppUser createAppUser(String username, String email) {
         AppUser user = new AppUser();
