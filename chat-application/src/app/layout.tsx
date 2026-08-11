@@ -12,7 +12,11 @@ export const metadata: Metadata = {
   description: 'Мессенджер — общайтесь без границ',
 }
 
-export default function RootLayout({ children }: LayoutProps<'/'>) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
     <html lang="ru" className={`${geistSans.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col font-sans">{children}</body>

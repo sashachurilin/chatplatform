@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button, Input } from '@/shared/ui'
@@ -11,6 +12,7 @@ import { loginSchema, type LoginFormData } from '../model/schemas'
 type MessageType = 'success' | 'error' | ''
 
 export function LoginForm() {
+  const router = useRouter()
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<MessageType>('')
 
@@ -34,6 +36,7 @@ export function LoginForm() {
       await loginUser({ email: data.email, password: data.password })
       setMessage('Вы успешно вошли!')
       setMessageType('success')
+      router.push('/chat')
     } catch (err) {
       const errorMessage =
         err instanceof ApiError
@@ -62,7 +65,7 @@ export function LoginForm() {
           <Input
             label="Email"
             type="email"
-            placeholder="you@example.com"
+            placeholder="Email"
             error={errors.email?.message}
             {...register('email')}
           />
@@ -90,11 +93,10 @@ export function LoginForm() {
         {/* Feedback */}
         {message && (
           <div
-            className={`mt-5 flex items-center gap-2.5 rounded-lg p-3.5 text-sm ${
-              messageType === 'success'
+            className={`mt-5 flex items-center gap-2.5 rounded-lg p-3.5 text-sm ${messageType === 'success'
                 ? 'bg-success-bg text-success-text'
                 : 'bg-error-bg text-error-text'
-            }`}
+              }`}
           >
             <span>{messageType === 'success' ? '✓' : '✕'}</span>
             <span>{message}</span>
