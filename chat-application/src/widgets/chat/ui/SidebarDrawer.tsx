@@ -1,17 +1,12 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import {
   X,
   ArrowLeft,
   MagnifyingGlass,
-  UserCircle,
-  Key,
-  LockKey,
   ChatTeardropText,
   Bell,
-  Keyboard,
-  Question,
   SignOut,
   Moon,
   Camera,
@@ -31,6 +26,7 @@ import {
 } from '@phosphor-icons/react'
 import { UserAvatar } from '@/shared/ui'
 import type { User } from '@/entities/user'
+import type { ChatSettings } from '../model/wallpaper'
 
 interface SidebarDrawerProps {
   user: User
@@ -39,9 +35,10 @@ interface SidebarDrawerProps {
   isNightMode?: boolean
   onToggleNightMode?: (val: boolean) => void
   onClose: () => void
-  onOpenProfile?: () => void
   onSaveProfile?: (updatedUser: User) => void
   onLogout: () => void
+  chatSettings?: ChatSettings
+  onUpdateChatSettings?: (settings: ChatSettings) => void
 }
 
 type DrawerView = 'settings' | 'profile' | 'account' | 'privacy' | 'chats' | 'notifications' | 'shortcuts' | 'help'
@@ -55,7 +52,6 @@ export function SidebarDrawer({
   isNightMode = false,
   onToggleNightMode,
   onClose,
-  onOpenProfile,
   onSaveProfile,
   onLogout,
 }: SidebarDrawerProps) {
@@ -63,7 +59,6 @@ export function SidebarDrawer({
   const [searchQuery, setSearchQuery] = useState('')
   const [userStatus, setUserStatus] = useState('В сети')
 
-  // Profile editable fields
   const [editingName, setEditingName] = useState(false)
   const [username, setUsername] = useState(user.username)
   const [editingTag, setEditingTag] = useState(false)
@@ -74,17 +69,6 @@ export function SidebarDrawer({
   const [bio, setBio] = useState(user.bio ?? 'Разработчик HeyChat!')
   const [avatar, setAvatar] = useState(user.avatar ?? 'user')
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (isOpen) {
-      setCurrentView(initialView)
-      setUsername(user.username)
-      setUserTag(user.userTag)
-      setEmail(user.email)
-      setBio(user.bio ?? 'Разработчик HeyChat!')
-      setAvatar(user.avatar ?? 'user')
-    }
-  }, [isOpen, initialView, user])
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -137,7 +121,7 @@ export function SidebarDrawer({
     {
       id: 'profile-account',
       title: 'Профиль и Аккаунт',
-      subtitle: 'Имя, уведомления о безопасности',
+      subtitle: 'Имя, сведения и контакты',
       icon: Gear,
       iconBg: 'bg-blue-500/10 text-blue-600',
       action: () => setCurrentView('profile'),
@@ -169,10 +153,10 @@ export function SidebarDrawer({
     {
       id: 'more',
       title: 'Дополнительно',
-      subtitle: 'Сочетания клавиш, помощь и отзывы',
+      subtitle: 'Справка и информация',
       icon: DotsThree,
       iconBg: 'bg-slate-500/10 text-slate-600',
-      action: () => setCurrentView('shortcuts'),
+      action: () => setCurrentView('account'),
     },
   ]
 
@@ -220,13 +204,11 @@ export function SidebarDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 select-none">
-      {/* Backdrop */}
       <div
         onClick={handleClose}
         className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity duration-300"
       />
 
-      {/* Floating Centered Settings Window (1.5x larger width) */}
       <div
         className={`relative z-50 flex w-full max-w-[620px] max-h-[85vh] flex-col rounded-3xl shadow-2xl overflow-hidden transition-all duration-200 ease-out ${
           isNightMode
@@ -234,7 +216,6 @@ export function SidebarDrawer({
             : 'bg-white text-slate-900 border border-slate-100'
         }`}
       >
-        {/* Header dependent on current view */}
         <div className={`flex h-16 items-center justify-between px-5 shrink-0 ${
           isNightMode ? 'border-b border-slate-800' : 'border-b border-slate-100/80'
         }`}>
@@ -273,10 +254,8 @@ export function SidebarDrawer({
           </button>
         </div>
 
-        {/* VIEW 1: SETTINGS MENU */}
         {currentView === 'settings' && (
           <>
-            {/* Minimalist Search Bar */}
             <div className="px-5 pt-3.5 pb-2 shrink-0">
               <div className="relative flex items-center">
                 <MagnifyingGlass
@@ -306,9 +285,7 @@ export function SidebarDrawer({
               </div>
             </div>
 
-            {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto px-5 py-2">
-              {/* Full-width Profile Card with Right Action Button */}
               <div
                 onClick={() => setCurrentView('profile')}
                 className={`group relative flex items-center justify-between p-4 my-2 rounded-2xl border transition-all cursor-pointer shadow-xs ${
@@ -318,7 +295,6 @@ export function SidebarDrawer({
                 }`}
               >
                 <div className="flex items-center gap-4 min-w-0 flex-1">
-                  {/* Left Column: Avatar */}
                   <div className="relative shrink-0">
                     <UserAvatar avatar={avatar} name={username} size="lg" className={`!h-16 !w-16 ring-4 shadow-sm ${isNightMode ? 'ring-slate-800' : 'ring-white'}`} />
                     <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200">
@@ -326,9 +302,7 @@ export function SidebarDrawer({
                     </div>
                   </div>
 
-                  {/* Middle Column: Status, Name, Tag */}
                   <div className="flex flex-col items-start min-w-0 space-y-1">
-                    {/* Line 1: Status pill */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -344,19 +318,16 @@ export function SidebarDrawer({
                       <span>{userStatus}</span>
                     </button>
 
-                    {/* Line 2: Name */}
                     <h3 className={`text-base font-bold tracking-tight truncate group-hover:text-blue-600 transition-colors ${isNightMode ? 'text-slate-100' : 'text-slate-900'}`}>
                       {username}
                     </h3>
 
-                    {/* Line 3: Tag / Handle */}
                     <p className="text-xs text-slate-400 font-medium truncate leading-none">
                       {userTag}
                     </p>
                   </div>
                 </div>
 
-                {/* Right Column: Action Button */}
                 <div className="flex items-center gap-2 shrink-0 ml-3">
                   <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold group-hover:border-blue-300 group-hover:text-blue-600 shadow-2xs transition-all ${isNightMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`}>
                     <PencilSimple size={14} weight="bold" />
@@ -366,7 +337,6 @@ export function SidebarDrawer({
                 </div>
               </div>
 
-              {/* Settings Items - Airy, Clean & Minimalist */}
               <div className="px-2.5 py-1 flex flex-col gap-1">
                 {filteredItems.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 text-center text-slate-400">
@@ -407,10 +377,8 @@ export function SidebarDrawer({
           </>
         )}
 
-        {/* VIEW 2: PROFILE DETAILS (Centered & Minimalist) */}
         {currentView === 'profile' && (
           <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
-            {/* Avatar Section - Centered */}
             <div className="flex flex-col items-center text-center py-2 space-y-3">
               <div
                 className="relative group cursor-pointer"
@@ -431,7 +399,6 @@ export function SidebarDrawer({
                 className="hidden"
               />
 
-              {/* Upload or Reset Buttons - Centered */}
               <div className="flex items-center justify-center gap-3">
                 <button
                   type="button"
@@ -454,7 +421,6 @@ export function SidebarDrawer({
                 )}
               </div>
 
-              {/* Quick Presets Row - Centered */}
               <div className="w-full pt-1">
                 <span className="text-[11px] font-semibold text-slate-400 block mb-2 text-center">
                   Быстрый выбор аватарки:
@@ -478,9 +444,7 @@ export function SidebarDrawer({
               </div>
             </div>
 
-            {/* Profile Info Cards - Clean, Left-aligned & Minimalist */}
             <div className={`space-y-3 pt-2 border-t ${isNightMode ? 'border-slate-800' : 'border-slate-100'}`}>
-              {/* Section 1: Your Name */}
               <div className={`rounded-2xl p-3.5 space-y-1 ${isNightMode ? 'bg-slate-800/60' : 'bg-slate-100/60'}`}>
                 <label className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block">
                   Ваше имя
@@ -519,7 +483,6 @@ export function SidebarDrawer({
                 </p>
               </div>
 
-              {/* Section 2: Bio */}
               <div className={`rounded-2xl p-3.5 space-y-1 ${isNightMode ? 'bg-slate-800/60' : 'bg-slate-100/60'}`}>
                 <label className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block">
                   Сведения
@@ -555,7 +518,6 @@ export function SidebarDrawer({
                 )}
               </div>
 
-              {/* Section 3: User Tag */}
               <div className={`rounded-2xl p-3.5 space-y-1 ${isNightMode ? 'bg-slate-800/60' : 'bg-slate-100/60'}`}>
                 <label className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block">
                   Имя пользователя (тег)
@@ -591,7 +553,6 @@ export function SidebarDrawer({
                 )}
               </div>
 
-              {/* Section 4: Email */}
               <div className={`rounded-2xl p-3.5 space-y-1 ${isNightMode ? 'bg-slate-800/60' : 'bg-slate-100/60'}`}>
                 <label className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block">
                   Email
@@ -630,7 +591,6 @@ export function SidebarDrawer({
           </div>
         )}
 
-        {/* VIEW 3: OTHER SUB-SETTINGS */}
         {currentView === 'account' && (
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
             <div className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ${isNightMode ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'}`}>
@@ -681,7 +641,18 @@ export function SidebarDrawer({
           </div>
         )}
 
-        {/* Footer Logout Button */}
+        {currentView === 'notifications' && (
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            <div className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ${isNightMode ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'}`}>
+              <Bell size={22} className={isNightMode ? 'text-slate-400' : 'text-slate-500'} />
+              <div>
+                <span className="block text-sm font-semibold">Звуки сообщений</span>
+                <span className={`block text-xs ${isNightMode ? 'text-slate-400' : 'text-muted'}`}>Включены</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className={`px-3.5 py-3 shrink-0 space-y-1 ${
           isNightMode ? 'border-t border-slate-800' : 'border-t border-slate-100/80'
         }`}>
