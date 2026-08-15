@@ -5,6 +5,10 @@ export const registerSchema = z
     username: z
       .string()
       .min(1, 'Заполните имя пользователя'),
+    userTag: z
+      .string()
+      .min(1, 'Заполните тег пользователя')
+      .regex(/^@?[A-Za-z0-9_]{3,20}$/, 'Тег должен содержать от 3 до 20 символов (буквы, цифры, _)'),
     email: z
       .string()
       .min(1, 'Заполните email')

@@ -2,10 +2,6 @@ import { findMockRoute } from './routes/auth'
 
 const MOCK_DELAY = 300
 
-/**
- * Intercepts a fetch request if a mock route matches.
- * Returns a Response if mocked, or null to let real fetch proceed.
- */
 export async function handleMockRequest(
   url: string,
   options: RequestInit,

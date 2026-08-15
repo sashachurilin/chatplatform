@@ -1,15 +1,14 @@
 import type { User } from '@/entities/user'
 
-// ── In-memory "DB" ──────────────────────────────────────────
 interface StoredUser extends User {
   password: string
 }
 
 const registeredUsers: StoredUser[] = []
 
-// ── Types ───────────────────────────────────────────────────
 export interface RegisterRequest {
   username: string
+  userTag?: string
   email: string
   password: string
 }
@@ -25,9 +24,8 @@ export interface AuthResponse {
   user: User
 }
 
-// ── Route handlers ──────────────────────────────────────────
 function handleRegister(data: RegisterRequest): { status: number; body: unknown } {
-  const { username, email, password } = data
+  const { username, userTag, email, password } = data
 
   if (!username || !email || !password) {
     return { status: 400, body: { message: 'Заполните все поля' } }
@@ -41,10 +39,14 @@ function handleRegister(data: RegisterRequest): { status: number; body: unknown 
     return { status: 409, body: { message: 'Имя пользователя уже занято' } }
   }
 
+  const formattedTag = userTag
+    ? (userTag.startsWith('@') ? userTag : `@${userTag}`)
+    : '@' + username.toLowerCase().replace(/\s+/g, '')
+
   const user: StoredUser = {
     id: crypto.randomUUID(),
     username,
-    userTag: '@' + username.toLowerCase().replace(/\s+/g, ''),
+    userTag: formattedTag,
     email,
     password,
     status: 'ONLINE',
@@ -52,7 +54,16 @@ function handleRegister(data: RegisterRequest): { status: number; body: unknown 
   }
   registeredUsers.push(user)
 
-  const { password: _, ...safeUser } = user
+  const safeUser = {
+    id: user.id,
+    username: user.username,
+    userTag: user.userTag,
+    email: user.email,
+    status: user.status,
+    createdAt: user.createdAt,
+    avatar: user.avatar,
+    bio: user.bio,
+  }
   return {
     status: 200,
     body: {
@@ -71,7 +82,16 @@ function handleLogin(data: LoginRequest): { status: number; body: unknown } {
     return { status: 401, body: { message: 'Неверный email или пароль' } }
   }
 
-  const { password: _, ...safeUser } = user
+  const safeUser = {
+    id: user.id,
+    username: user.username,
+    userTag: user.userTag,
+    email: user.email,
+    status: user.status,
+    createdAt: user.createdAt,
+    avatar: user.avatar,
+    bio: user.bio,
+  }
   return {
     status: 200,
     body: {
@@ -81,7 +101,6 @@ function handleLogin(data: LoginRequest): { status: number; body: unknown } {
   }
 }
 
-// ── Route table ─────────────────────────────────────────────
 interface MockRoute {
   method: string
   path: string

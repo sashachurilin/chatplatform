@@ -2,11 +2,6 @@ import { config } from '@/shared/config/env'
 import { ApiError } from '@/shared/types/api'
 import { handleMockRequest } from './mock'
 
-/**
- * Thin fetch wrapper with mock support.
- * When NEXT_PUBLIC_MOCK_API=true, requests are intercepted by the mock handler.
- * When the real backend is ready, simply set the env var to false.
- */
 export async function apiClient<T>(
   endpoint: string,
   options: RequestInit = {},
@@ -23,14 +18,9 @@ export async function apiClient<T>(
 
   let response: Response
 
-  // Try mock first if enabled
   if (config.mockEnabled) {
-    const mockResponse = await handleMockRequest(endpoint, fetchOptions)
-    if (mockResponse) {
-      response = mockResponse
-    } else {
-      response = await fetch(url, fetchOptions)
-    }
+    const mock = await handleMockRequest(endpoint, fetchOptions)
+    response = mock ?? (await fetch(url, fetchOptions))
   } else {
     response = await fetch(url, fetchOptions)
   }
