@@ -9,12 +9,9 @@ import {
   QrCode,
   Gift,
   MusicNotes,
-  UploadSimple,
-  Check,
-  Trash,
   User as UserIcon,
 } from '@phosphor-icons/react'
-import { Button, UserAvatar } from '@/shared/ui'
+import { UserAvatar } from '@/shared/ui'
 import type { User } from '@/entities/user'
 
 interface EditProfileModalProps {
@@ -30,7 +27,7 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
   const [isEditing, setIsEditing] = useState(false)
   const [username, setUsername] = useState(user.username)
   const [userTag, setUserTag] = useState(user.userTag)
-  const [email, setEmail] = useState(user.email)
+  const email = user.email
   const [phone, setPhone] = useState('+7 965 627 6435')
   const [birthday, setBirthday] = useState('Feb 19, 2005 (21 years old)')
   const [bio, setBio] = useState(user.bio ?? 'Разработчик HeyChat!')
@@ -67,13 +64,9 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
   return (
     <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
-        {/* Dark Backdrop */}
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
 
-        {/* Telegram Desktop Style Dark Modal Content */}
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-[390px] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-[#17212B] text-slate-100 shadow-2xl border border-slate-700/60 duration-200 overflow-hidden select-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
-
-          {/* Top Header Action Bar */}
           <div className="flex items-center justify-end gap-3 px-4 pt-3.5 pb-1">
             <button
               onClick={() => setIsEditing(!isEditing)}
@@ -92,9 +85,7 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
             </Dialog.Close>
           </div>
 
-          {/* Main User Card Header */}
           <div className="flex flex-col items-center justify-center pb-4 px-6">
-            {/* Avatar */}
             <div
               className="relative group cursor-pointer"
               onClick={() => fileInputRef.current?.click()}
@@ -118,7 +109,6 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
               className="hidden"
             />
 
-            {/* Username & Status Badge */}
             <h2 className="mt-3 text-lg font-bold text-white flex items-center gap-1.5">
               <span>{username}</span>
               <span className="text-sm">🐈</span>
@@ -132,14 +122,12 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
             </div>
           </div>
 
-          {/* Music Track Bar */}
           <div className="flex items-center justify-center gap-2 bg-[#0E1621] py-2 px-4 text-xs font-medium text-slate-300 hover:text-white cursor-pointer border-t border-b border-slate-800/80 transition-colors">
             <MusicNotes size={16} className="text-[#38A5F8]" weight="fill" />
             <span className="truncate">Neck Deep – In Bloom</span>
             <span className="text-slate-500 font-bold">&gt;</span>
           </div>
 
-          {/* EDIT FORM VIEW */}
           {isEditing ? (
             <form onSubmit={handleSave} className="p-4 space-y-3 bg-[#17212B]">
               <div className="text-xs font-bold text-[#38A5F8] uppercase tracking-wider mb-2">
@@ -198,7 +186,6 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
                 />
               </div>
 
-              {/* Quick Presets Row */}
               <div className="pt-1">
                 <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">Быстрый выбор аватарки:</span>
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
@@ -206,10 +193,14 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
                     <button
                       key={opt}
                       type="button"
-                      onClick={() => setAvatar(opt)}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setAvatar(opt)
+                      }}
                       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm transition-all ${
                         avatar === opt
-                          ? 'bg-[#3390EC] text-white font-bold ring-2 ring-[#38A5F8]'
+                          ? 'bg-[#69a1c8] text-white font-bold ring-2 ring-[#69a1c8]'
                           : 'bg-[#242F3D] hover:bg-slate-700 text-slate-300'
                       }`}
                     >
@@ -236,15 +227,12 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
               </div>
             </form>
           ) : (
-            /* VIEW MODE: TELEGRAM PROFILE DETAILS LIST */
             <div className="bg-[#17212B] divide-y divide-slate-800/70">
-              {/* Phone Field */}
               <div className="px-5 py-3 hover:bg-[#242F3D]/50 transition-colors cursor-pointer">
                 <div className="text-sm font-medium text-white">{phone}</div>
                 <div className="text-xs text-slate-400 mt-0.5">Mobile</div>
               </div>
 
-              {/* Username Tag Field */}
               <div className="flex items-center justify-between px-5 py-3 hover:bg-[#242F3D]/50 transition-colors cursor-pointer">
                 <div>
                   <div className="text-sm font-medium text-[#38A5F8]">{userTag}</div>
@@ -255,13 +243,11 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
                 </button>
               </div>
 
-              {/* Birthday Field */}
               <div className="px-5 py-3 hover:bg-[#242F3D]/50 transition-colors cursor-pointer">
                 <div className="text-sm font-medium text-white">{birthday}</div>
                 <div className="text-xs text-slate-400 mt-0.5">Birthday</div>
               </div>
 
-              {/* Gifts Section */}
               <div className="flex items-center justify-between px-5 py-3 bg-[#17212B] hover:bg-[#242F3D]/50 transition-colors cursor-pointer border-t-4 border-[#0E1621]">
                 <div className="flex items-center gap-3.5">
                   <Gift size={20} className="text-slate-400" />
@@ -270,7 +256,6 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
                 <span className="text-sm font-semibold text-[#38A5F8]">4</span>
               </div>
 
-              {/* Stories Bottom Block */}
               <div className="py-7 px-4 text-center bg-[#0E1621] text-slate-400 text-xs font-medium">
                 Your stories will be here.
               </div>
