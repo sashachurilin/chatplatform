@@ -5,6 +5,8 @@ export interface User {
   username: string
   userTag: string
   email: string
+  avatar?: string
+  bio?: string
   status: UserStatus
   createdAt: string
   updatedAt?: string

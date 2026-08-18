@@ -48,3 +48,8 @@ desktop.ini
 **/*.swo
 **/.~*
 **/~*
+.claude/
+.cursor/
+.cline/
+.aider*
+**/.next/

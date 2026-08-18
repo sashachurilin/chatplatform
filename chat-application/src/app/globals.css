@@ -32,6 +32,14 @@
   --font-mono: var(--font-geist-mono);
 }
 
+.dark {
+  --color-background: #0f172a;
+  --color-foreground: #f8fafc;
+  --color-muted: #94a3b8;
+  --color-border: #334155;
+  --color-border-focus: #60a5fa;
+}
+
 body {
   background: var(--color-background);
   color: var(--color-foreground);

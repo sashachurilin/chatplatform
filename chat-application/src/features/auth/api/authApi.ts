@@ -3,6 +3,7 @@ import type { User } from '@/entities/user'
 
 interface RegisterRequest {
   username: string
+  userTag: string
   email: string
   password: string
 }
