@@ -1,15 +1,11 @@
 package com.chatapplication.core.entities;
 
 import com.chatapplication.core.entities.enums.RoomType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
 import jakarta.persistence.*;
-import jakarta.persistence.Id;
 import lombok.Data;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 @Data
@@ -32,14 +28,13 @@ public class ChatRoom {
 
     private Instant deletedAt;
 
-    @OneToMany
+    @OneToMany(mappedBy = "chatRoom", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Participant> participants;
 
-    public List<UUID> participantsIds() {
-        return Optional.ofNullable(participants)
-                .map(list -> list.stream()
-                        .map(Participant::getId)
-                        .toList())
-                .orElse(List.of());
+    public List<UUID> getParticipantsIds() {
+        if (participants == null) return List.of();
+        return participants.stream()
+                .map(Participant::getId)
+                .toList();
     }
 }
