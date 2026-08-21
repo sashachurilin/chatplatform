@@ -25,13 +25,11 @@ export async function apiClient<T>(
     response = await fetch(url, fetchOptions)
   }
 
-  const data = await response.json()
+  const data = await response.json().catch(() => ({}))
 
   if (!response.ok) {
-    throw new ApiError(
-      response.status,
-      data.message ?? 'Произошла ошибка',
-    )
+    const message = data.message ?? data.error ?? 'Произошла ошибка'
+    throw new ApiError(response.status, message)
   }
 
   return data as T

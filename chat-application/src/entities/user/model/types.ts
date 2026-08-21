@@ -1,4 +1,4 @@
-export type UserStatus = 'ONLINE' | 'OFFLINE' | 'AWAY'
+export type UserStatus = 'ONLINE' | 'OFFLINE' | 'AWAY' | ''
 
 export interface User {
   id: string
@@ -7,8 +7,8 @@ export interface User {
   email: string
   avatar?: string
   bio?: string
-  status: UserStatus
-  createdAt: string
+  status?: UserStatus
+  createdAt?: string
   updatedAt?: string
   lastLogin?: string
 }

@@ -40,7 +40,6 @@ export function RegisterForm() {
     resolver: zodResolver(registerSchema),
     defaultValues: {
       username: '',
-      userTag: '',
       email: '',
       password: '',
       confirmPassword: '',
@@ -55,10 +54,8 @@ export function RegisterForm() {
     setIsSuccess(false)
 
     try {
-      const formattedTag = data.userTag.startsWith('@') ? data.userTag : `@${data.userTag}`
       const res = await registerUser({
         username: data.username,
-        userTag: formattedTag,
         email: data.email,
         password: data.password,
       })
@@ -97,14 +94,6 @@ export function RegisterForm() {
             placeholder="Ваше имя"
             error={errors.username?.message}
             {...register('username')}
-          />
-
-          <Input
-            label="Тег пользователя"
-            type="text"
-            placeholder="@tag"
-            error={errors.userTag?.message}
-            {...register('userTag')}
           />
 
           <Input

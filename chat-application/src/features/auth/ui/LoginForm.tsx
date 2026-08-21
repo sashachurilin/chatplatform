@@ -21,7 +21,7 @@ export function LoginForm() {
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: '',
+      usernameOrEmail: '',
       password: '',
     },
   })
@@ -31,7 +31,7 @@ export function LoginForm() {
     setIsSuccess(false)
 
     try {
-      const res = await loginUser({ email: data.email, password: data.password })
+      const res = await loginUser({ usernameOrEmail: data.usernameOrEmail, password: data.password })
       if (res.user && typeof window !== 'undefined') {
         localStorage.setItem('heychat_user', JSON.stringify(res.user))
       }
@@ -59,11 +59,11 @@ export function LoginForm() {
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <Input
-            label="Email"
-            type="email"
-            placeholder="Email"
-            error={errors.email?.message}
-            {...register('email')}
+            label="Email или имя пользователя"
+            type="text"
+            placeholder="Email или имя пользователя"
+            error={errors.usernameOrEmail?.message}
+            {...register('usernameOrEmail')}
           />
 
           <Input

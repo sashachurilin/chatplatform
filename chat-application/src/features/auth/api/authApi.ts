@@ -3,15 +3,27 @@ import type { User } from '@/entities/user'
 
 interface RegisterRequest {
   username: string
-  userTag: string
   email: string
   password: string
 }
 
+interface LoginRequest {
+  usernameOrEmail: string
+  password: string
+}
+
 interface AuthResponse {
-  message?: string
-  token: string
+  accessToken: string
+  refreshToken: string
+  expiresIn: number
   user: User
+}
+
+interface User {
+  id: string
+  username: string
+  userTag: string
+  email: string
 }
 
 export async function registerUser(data: RegisterRequest): Promise<AuthResponse> {
@@ -19,11 +31,6 @@ export async function registerUser(data: RegisterRequest): Promise<AuthResponse>
     method: 'POST',
     body: JSON.stringify(data),
   })
-}
-
-interface LoginRequest {
-  email: string
-  password: string
 }
 
 export async function loginUser(data: LoginRequest): Promise<AuthResponse> {

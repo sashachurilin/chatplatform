@@ -5,10 +5,6 @@ export const registerSchema = z
     username: z
       .string()
       .min(1, 'Заполните имя пользователя'),
-    userTag: z
-      .string()
-      .min(1, 'Заполните тег пользователя')
-      .regex(/^@?[A-Za-z0-9_]{3,20}$/, 'Тег должен содержать от 3 до 20 символов (буквы, цифры, _)'),
     email: z
       .string()
       .min(1, 'Заполните email')
@@ -28,10 +24,9 @@ export const registerSchema = z
 export type RegisterFormData = z.infer<typeof registerSchema>
 
 export const loginSchema = z.object({
-  email: z
+  usernameOrEmail: z
     .string()
-    .min(1, 'Заполните email')
-    .email('Некорректный email'),
+    .min(1, 'Заполните имя пользователя или email'),
   password: z
     .string()
     .min(1, 'Заполните пароль'),
