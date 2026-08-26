@@ -13,6 +13,7 @@ import {
 } from '@phosphor-icons/react'
 import { UserAvatar } from '@/shared/ui'
 import type { User } from '@/entities/user'
+import { updateProfile as apiUpdateProfile } from '@/features/user-profile/api/userApi'
 
 interface EditProfileModalProps {
   user: User
@@ -47,9 +48,9 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
     reader.readAsDataURL(file)
   }
 
-  const handleSave = (e?: React.FormEvent) => {
+  const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
-    onSave({
+    const finalUser: User = {
       ...user,
       username,
       userTag: userTag.startsWith('@') ? userTag : `@${userTag}`,
@@ -57,7 +58,18 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
       bio,
       avatar,
       updatedAt: new Date().toISOString(),
-    })
+    }
+    try {
+      await apiUpdateProfile({
+        username: username !== user.username ? username : undefined,
+        userTag: finalUser.userTag?.replace('@', '') !== user.userTag?.replace('@', '') ? finalUser.userTag?.replace('@', '') : undefined,
+        bio: bio !== user.bio ? bio : undefined,
+        avatarUrl: avatar !== user.avatar ? avatar : undefined,
+      })
+    } catch (err) {
+      console.error('Ошибка обновления профиля:', err)
+    }
+    onSave(finalUser)
     setIsEditing(false)
   }
 

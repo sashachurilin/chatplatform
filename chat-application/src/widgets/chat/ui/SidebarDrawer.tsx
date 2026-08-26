@@ -27,6 +27,7 @@ import {
 import { UserAvatar } from '@/shared/ui'
 import type { User } from '@/entities/user'
 import type { ChatSettings } from '../model/wallpaper'
+import { updateProfile as apiUpdateProfile } from '@/features/user-profile/api/userApi'
 
 interface SidebarDrawerProps {
   user: User
@@ -70,45 +71,70 @@ export function SidebarDrawer({
   const [avatar, setAvatar] = useState(user.avatar ?? 'user')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     const reader = new FileReader()
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       if (typeof event.target?.result === 'string') {
         const newAvatar = event.target.result
         setAvatar(newAvatar)
+        try {
+          await apiUpdateProfile({ avatarUrl: newAvatar })
+        } catch (err) {
+          console.error('Ошибка обновления аватара:', err)
+        }
         onSaveProfile?.({ ...user, avatar: newAvatar })
       }
     }
     reader.readAsDataURL(file)
   }
 
-  const handleSaveName = () => {
+  const handleSaveName = async () => {
     setEditingName(false)
+    try {
+      await apiUpdateProfile({ username })
+    } catch (err) {
+      console.error('Ошибка обновления имени:', err)
+    }
     onSaveProfile?.({ ...user, username })
   }
 
-  const handleSaveBio = () => {
+  const handleSaveBio = async () => {
     setEditingBio(false)
+    try {
+      await apiUpdateProfile({ bio })
+    } catch (err) {
+      console.error('Ошибка обновления сведения:', err)
+    }
     onSaveProfile?.({ ...user, bio })
   }
 
-  const handleSaveTag = () => {
+  const handleSaveTag = async () => {
     setEditingTag(false)
     const formattedTag = userTag.startsWith('@') ? userTag : `@${userTag}`
     setUserTag(formattedTag)
+    try {
+      await apiUpdateProfile({ userTag: formattedTag.replace('@', '') })
+    } catch (err) {
+      console.error('Ошибка обновления тега:', err)
+    }
     onSaveProfile?.({ ...user, userTag: formattedTag })
   }
 
-  const handleSaveEmail = () => {
+  const handleSaveEmail = async () => {
     setEditingEmail(false)
     onSaveProfile?.({ ...user, email })
   }
 
-  const handleSelectPresetAvatar = (opt: string) => {
+  const handleSelectPresetAvatar = async (opt: string) => {
     setAvatar(opt)
+    try {
+      await apiUpdateProfile({ avatarUrl: opt })
+    } catch (err) {
+      console.error('Ошибка обновления аватара:', err)
+    }
     onSaveProfile?.({ ...user, avatar: opt })
   }
 

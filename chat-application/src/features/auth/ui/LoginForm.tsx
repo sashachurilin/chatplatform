@@ -33,7 +33,12 @@ export function LoginForm() {
     try {
       const res = await loginUser({ usernameOrEmail: data.usernameOrEmail, password: data.password })
       if (res.user && typeof window !== 'undefined') {
-        localStorage.setItem('heychat_user', JSON.stringify(res.user))
+        const userData = {
+          ...res.user,
+          accessToken: res.accessToken,
+          refreshToken: res.refreshToken,
+        }
+        localStorage.setItem('heychat_user', JSON.stringify(userData))
       }
       setMessage('Вы успешно вошли!')
       setIsSuccess(true)

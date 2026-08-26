@@ -52,6 +52,7 @@ import {
 import { HeyChatLogo, Button, UserAvatar } from '@/shared/ui'
 import { SidebarDrawer } from './SidebarDrawer'
 import type { User } from '@/entities/user'
+import { updateProfile as apiUpdateProfile } from '@/features/user-profile/api/userApi'
 import {
   ChatSettings,
   DEFAULT_CHAT_SETTINGS,
@@ -617,10 +618,20 @@ export function ChatWidget() {
     return fallback
   })
 
-  const handleUpdateUser = (updatedUser: User) => {
+  const handleUpdateUser = async (updatedUser: User) => {
     setCurrentUser(updatedUser)
     if (typeof window !== 'undefined') {
       localStorage.setItem('heychat_user', JSON.stringify(updatedUser))
+    }
+    try {
+      await apiUpdateProfile({
+        username: updatedUser.username !== currentUser.username ? updatedUser.username : undefined,
+        userTag: updatedUser.userTag?.replace('@', '') !== currentUser.userTag?.replace('@', '') ? updatedUser.userTag?.replace('@', '') : undefined,
+        bio: updatedUser.bio !== currentUser.bio ? updatedUser.bio : undefined,
+        avatarUrl: updatedUser.avatar !== currentUser.avatar ? updatedUser.avatar : undefined,
+      })
+    } catch (err) {
+      console.error('Ошибка обновления профиля:', err)
     }
   }
 

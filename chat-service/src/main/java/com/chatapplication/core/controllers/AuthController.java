@@ -83,6 +83,8 @@ public class AuthController {
                         .username(user.getUsername())
                         .userTag(user.getUserTag())
                         .email(user.getEmail())
+                        .avatarUrl(user.getAvatarUrl())
+                        .bio(user.getBio())
                         .build());
             } catch (Exception e) {
                 log.warn("Ошибка получения данных пользователя");

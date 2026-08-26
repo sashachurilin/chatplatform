@@ -40,6 +40,10 @@ public class AppUser {
 
     private Long totalOnlineTime;
 
+    private String avatarUrl;
+
+    private String bio;
+
     @PrePersist
     public void prePersist() {
         if (id == null) id = UUID.randomUUID();

@@ -73,6 +73,8 @@ public class AuthService {
                         .username(user.getUsername())
                         .userTag(user.getUserTag())
                         .email(user.getEmail())
+                        .avatarUrl(user.getAvatarUrl())
+                        .bio(user.getBio())
                         .build())
                 .build();
     }
@@ -110,6 +112,8 @@ public class AuthService {
                         .username(user.getUsername())
                         .userTag(user.getUserTag())
                         .email(user.getEmail())
+                        .avatarUrl(user.getAvatarUrl())
+                        .bio(user.getBio())
                         .build())
                 .build();
     }

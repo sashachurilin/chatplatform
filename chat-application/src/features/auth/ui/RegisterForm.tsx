@@ -61,7 +61,12 @@ export function RegisterForm() {
       })
 
       if (res.user && typeof window !== 'undefined') {
-        localStorage.setItem('heychat_user', JSON.stringify(res.user))
+        const userData = {
+          ...res.user,
+          accessToken: res.accessToken,
+          refreshToken: res.refreshToken,
+        }
+        localStorage.setItem('heychat_user', JSON.stringify(userData))
       }
 
       setMessage('Регистрация прошла успешно!')

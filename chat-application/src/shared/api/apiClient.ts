@@ -8,10 +8,22 @@ export async function apiClient<T>(
 ): Promise<T> {
   const url = `${config.apiBaseUrl}${endpoint}`
 
+  let token: string | null = null
+  if (typeof window !== 'undefined') {
+    const userStr = localStorage.getItem('heychat_user')
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr)
+        token = user?.accessToken ?? user?.token ?? null
+      } catch {}
+    }
+  }
+
   const fetchOptions: RequestInit = {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   }
