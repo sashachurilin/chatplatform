@@ -52,6 +52,13 @@ import {
 import { HeyChatLogo, Button, UserAvatar } from '@/shared/ui'
 import { SidebarDrawer } from './SidebarDrawer'
 import type { User } from '@/entities/user'
+import { getMe, logoutUser, updateUserProfile, searchUsers } from '@/features/auth/api/authApi'
+import {
+  getUserRooms,
+  createRoom,
+  getRoomMessages,
+  sendRoomMessage,
+} from '@/features/chat/api/roomsApi'
 import {
   ChatSettings,
   DEFAULT_CHAT_SETTINGS,
@@ -70,6 +77,7 @@ interface Chat {
   isReadOnly?: boolean
   isVerified?: boolean
   statusText?: string
+  tag?: string
 }
 
 export interface PollOption {
@@ -137,46 +145,6 @@ const MOCK_CHATS: Chat[] = [
     isVerified: true,
     statusText: 'Официальный канал',
   },
-  {
-    id: '2',
-    name: 'Алексей Смирнов',
-    avatar: '👨‍💻',
-    lastMessage: 'Работает супер быстро! ⚡️ Не забудь...',
-    time: '15:15',
-    unread: 2,
-    online: true,
-    statusText: 'в сети',
-  },
-  {
-    id: '3',
-    name: 'Екатерина Васина',
-    avatar: '👩‍💻',
-    lastMessage: 'Макеты нового UI уже готовы, отправила...',
-    time: '14:20',
-    unread: 1,
-    online: true,
-    statusText: 'была недавно',
-  },
-  {
-    id: '4',
-    name: 'Дизайн Команда',
-    avatar: '🦊',
-    lastMessage: 'Согласовали минималистичный стиль...',
-    time: 'Вчера',
-    unread: 0,
-    online: false,
-    statusText: '5 участников',
-  },
-  {
-    id: '5',
-    name: 'Михаил Игнатьев',
-    avatar: '👨‍💼',
-    lastMessage: 'Отличная работа по оптимизации...',
-    time: 'Пн',
-    unread: 0,
-    online: false,
-    statusText: 'был(а) недавно',
-  },
 ]
 
 const INITIAL_MESSAGES: Record<string, Message[]> = {
@@ -184,55 +152,9 @@ const INITIAL_MESSAGES: Record<string, Message[]> = {
     {
       id: 'm1',
       sender: 'HeyChat!',
-      text: 'Привет, Саша! Добро пожаловать в рабочее пространство HeyChat! 🚀',
+      text: 'Привет! Добро пожаловать в рабочее пространство HeyChat! 🚀',
       time: '10:00',
       date: TODAY_DATE_STR,
-      isMine: false,
-    },
-  ],
-  '2': [
-    {
-      id: 'm10',
-      sender: 'Алексей Смирнов',
-      text: 'Отлично! У нас сегодня по плану релиз обновления UI и тестирование поиска по сообщениям.',
-      time: '10:05',
-      date: TODAY_DATE_STR,
-      isMine: false,
-    },
-    {
-      id: 'm11',
-      sender: 'Саша',
-      text: 'Предлагаю использовать Node.js + Socket.io для прототипа или FastAPI WebSocket endpoint.',
-      time: '12:00',
-      date: TODAY_DATE_STR,
-      isMine: true,
-    },
-  ],
-  '3': [
-    {
-      id: 'm3_1',
-      sender: 'Екатерина Васина',
-      text: 'Привет! Макеты нового UI уже готовы, отправила ссылки в фигму 🎨',
-      time: '14:20',
-      date: TODAY_DATE_STR,
-      isMine: false,
-    },
-  ],
-  '4': [
-    {
-      id: 'm4_1',
-      sender: 'Дизайн Команда',
-      text: 'Согласовали минималистичный стиль боковой панели! Все лишние детали убрали, добавили больше воздуха.',
-      time: 'Вчера',
-      isMine: false,
-    },
-  ],
-  '5': [
-    {
-      id: 'm5_1',
-      sender: 'Михаил Игнатьев',
-      text: 'Отличная работа по оптимизации интерфейса! Теперь список чатов выглядит очень чисто и современно 🔥',
-      time: 'Пн',
       isMine: false,
     },
   ],
@@ -387,10 +309,12 @@ const QUICK_EMOJI_FILTERS = [
 
 export function ChatWidget() {
   const router = useRouter()
-  const [selectedChatId, setSelectedChatId] = useState<string>('2')
+  const [selectedChatId, setSelectedChatId] = useState<string>('1')
   const [messages, setMessages] = useState<Record<string, Message[]>>(INITIAL_MESSAGES)
   const [inputText, setInputText] = useState('')
   const [sidebarSearch, setSidebarSearch] = useState('')
+  const [foundUsers, setFoundUsers] = useState<User[]>([])
+  const [isSearchingUsers, setIsSearchingUsers] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -574,11 +498,209 @@ export function ChatWidget() {
     }
   }, [isChatMenuOpen])
 
-  // Global Night Mode state — always start false to match SSR, then sync from localStorage after hydration
-  const [isNightMode, setIsNightMode] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    return localStorage.getItem('heychat_night_mode') === 'true'
-  })
+  // Global Night Mode state — initialize false for SSR consistency, sync in useEffect
+  const [isNightMode, setIsNightMode] = useState<boolean>(false)
+
+  const handleToggleNightMode = (val: boolean) => {
+    setIsNightMode(val)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('heychat_night_mode', String(val))
+    }
+  }
+
+  const fallbackUser: User = {
+    id: 'usr-1',
+    username: 'Саша',
+    userTag: '@sasha',
+    email: 'sasha@mail.ru',
+    avatar: 'user',
+    bio: 'Разработчик HeyChat',
+    status: 'ONLINE',
+    createdAt: '2026-08-22T00:00:00.000Z',
+  }
+
+  const [currentUser, setCurrentUser] = useState<User>(fallbackUser)
+  const [chatSettings, setChatSettings] = useState<ChatSettings>(DEFAULT_CHAT_SETTINGS)
+
+  const handleUpdateUser = (updatedUser: User) => {
+    setCurrentUser(updatedUser)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('heychat_user', JSON.stringify(updatedUser))
+    }
+    updateUserProfile({
+      username: updatedUser.username,
+      userTag: updatedUser.userTag,
+    })
+      .then((serverUser) => {
+        if (serverUser?.userTag) {
+          const formatted = serverUser.userTag.startsWith('@') ? serverUser.userTag : `@${serverUser.userTag}`
+          setCurrentUser((prev) => {
+            const merged = { ...prev, userTag: formatted, username: serverUser.username }
+            localStorage.setItem('heychat_user', JSON.stringify(merged))
+            return merged
+          })
+          showToast('Тег успешно сохранён в БД ✨')
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not sync tag to backend:', err)
+        showToast('Профиль сохранён локально')
+      })
+  }
+
+  const handleUpdateChatSettings = (newSettings: ChatSettings) => {
+    setChatSettings(newSettings)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('heychat_chat_settings', JSON.stringify(newSettings))
+    }
+  }
+
+  // Hydrate client-side localStorage state and sync from backend
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    // 1. Night mode
+    const savedNight = localStorage.getItem('heychat_night_mode')
+    if (savedNight === 'true') {
+      setIsNightMode(true)
+      document.documentElement.classList.add('dark')
+    }
+
+    // 2. Chat settings / wallpaper
+    const savedSettings = localStorage.getItem('heychat_chat_settings')
+    if (savedSettings) {
+      try {
+        const parsed = JSON.parse(savedSettings)
+        if (parsed?.wallpaper) {
+          if (parsed.wallpaper.category !== 'custom') {
+            const matched = WALLPAPER_PRESETS.find((wp) => wp.id === parsed.wallpaper.id)
+            if (matched) {
+              setChatSettings({
+                ...parsed,
+                wallpaper: {
+                  ...matched,
+                  blur: parsed.wallpaper.blur ?? 0,
+                  dim: parsed.wallpaper.dim ?? 0,
+                },
+              })
+            } else {
+              setChatSettings(parsed)
+            }
+          } else {
+            setChatSettings(parsed)
+          }
+        }
+      } catch {}
+    }
+
+    // 3. User
+    const savedUser = localStorage.getItem('heychat_user')
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser)
+        if (parsed?.username) {
+          setCurrentUser(parsed)
+        }
+      } catch {}
+    }
+
+    // 4. Sync latest user from backend
+    const token = localStorage.getItem('heychat_token')
+    if (token) {
+      getMe()
+        .then((backendUser) => {
+          if (backendUser?.username) {
+            const formattedTag = backendUser.userTag
+              ? (backendUser.userTag.startsWith('@') ? backendUser.userTag : `@${backendUser.userTag}`)
+              : undefined
+            setCurrentUser((prev) => {
+              const merged = {
+                ...prev,
+                ...backendUser,
+                userTag: formattedTag || prev.userTag,
+              }
+              localStorage.setItem('heychat_user', JSON.stringify(merged))
+              return merged
+            })
+          }
+        })
+        .catch(() => {})
+    }
+
+    // 5. Load rooms from backend
+    if (token) {
+      getUserRooms()
+        .then((rooms) => {
+          if (rooms && rooms.length > 0) {
+            const mappedRooms: Chat[] = rooms.map((r) => ({
+              id: r.id,
+              name: r.name,
+              avatar: r.type === 'DIRECT' ? '👨‍💻' : 'brand',
+              lastMessage: r.lastMessage?.content || 'Нет сообщений',
+              time: r.lastMessage?.sentAt ? new Date(r.lastMessage.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '10:00',
+              unread: 0,
+              online: true,
+              statusText: r.type === 'PUBLIC' ? 'Канал' : 'Чат',
+            }))
+            setChats((prev) => {
+              const heychat = prev.find((c) => c.id === '1')
+              return heychat ? [heychat, ...mappedRooms.filter((rm) => rm.id !== '1')] : mappedRooms
+            })
+          }
+        })
+        .catch(() => {})
+    }
+  }, [])
+
+  // Update welcome message greeting with actual current username
+  useEffect(() => {
+    if (currentUser?.username) {
+      setMessages((prev) => {
+        const chat1Msgs = prev['1'] || []
+        const updated = chat1Msgs.map((m) =>
+          m.id === 'm1'
+            ? { ...m, text: `Привет, ${currentUser.username}! Добро пожаловать в рабочее пространство HeyChat! 🚀` }
+            : m
+        )
+        return {
+          ...prev,
+          '1': updated,
+        }
+      })
+    }
+  }, [currentUser?.username])
+
+  // Load room messages from backend when selecting a room
+  useEffect(() => {
+    if (selectedChatId && selectedChatId !== '1') {
+      getRoomMessages(selectedChatId)
+        .then((roomMsgs) => {
+          if (roomMsgs && Array.isArray(roomMsgs)) {
+            const mapped: Message[] = roomMsgs.map((m) => {
+              const timeStr = m.sentAt ? new Date(m.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '10:00'
+              const dateStr = m.sentAt ? new Date(m.sentAt).toISOString().split('T')[0] : TODAY_DATE_STR
+              return {
+                id: m.id,
+                sender: m.senderUsername || 'Пользователь',
+                text: m.content || '',
+                time: timeStr,
+                date: dateStr,
+                isMine: m.senderId === currentUser.id,
+                status: 'read',
+                audioUrl: m.messageType === 'VOICE' ? m.content : undefined,
+                fileUrl: m.messageType === 'FILE' || m.messageType === 'IMAGE' ? m.fileUrl : undefined,
+                fileName: m.fileName,
+              }
+            })
+            setMessages((prev) => ({
+              ...prev,
+              [selectedChatId]: mapped,
+            }))
+          }
+        })
+        .catch(() => {})
+    }
+  }, [selectedChatId, currentUser.id])
 
   useEffect(() => {
     if (isNightMode) {
@@ -588,94 +710,23 @@ export function ChatWidget() {
     }
   }, [isNightMode])
 
-  const handleToggleNightMode = (val: boolean) => {
-    setIsNightMode(val)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('heychat_night_mode', String(val))
-    }
-  }
 
-  const [currentUser, setCurrentUser] = useState<User>(() => {
-    const fallback: User = {
-      id: 'usr-1',
-      username: 'Саша',
-      userTag: '@sasha',
-      email: 'sasha@mail.ru',
-      avatar: 'user',
-      bio: 'Разработчик HeyChat',
-      status: 'ONLINE',
-      createdAt: new Date().toISOString(),
-    }
-    if (typeof window === 'undefined') return fallback
-    const saved = localStorage.getItem('heychat_user')
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        if (parsed?.username) return parsed
-      } catch {}
-    }
-    return fallback
-  })
-
-  const handleUpdateUser = (updatedUser: User) => {
-    setCurrentUser(updatedUser)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('heychat_user', JSON.stringify(updatedUser))
-    }
-  }
-
-  
-    const [chatSettings, setChatSettings] = useState<ChatSettings>(() => {
-    if (typeof window === 'undefined') return DEFAULT_CHAT_SETTINGS
-    const saved = localStorage.getItem('heychat_chat_settings')
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        if (parsed?.wallpaper) {
-          if (parsed.wallpaper.category !== 'custom') {
-            const matched = WALLPAPER_PRESETS.find((wp) => wp.id === parsed.wallpaper.id)
-            if (matched) {
-              return {
-                ...parsed,
-                wallpaper: {
-                  ...matched,
-                  blur: parsed.wallpaper.blur ?? 0,
-                  dim: parsed.wallpaper.dim ?? 0,
-                },
-              }
-            }
-          }
-          return parsed
-        }
-      } catch {}
-    }
-    return DEFAULT_CHAT_SETTINGS
-  })
-
-  const handleUpdateChatSettings = (newSettings: ChatSettings) => {
-    setChatSettings(newSettings)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('heychat_chat_settings', JSON.stringify(newSettings))
-    }
-  }
-
-  
   const [chats, setChats] = useState<Chat[]>(MOCK_CHATS)
 
-  
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey
       const isAlt = e.altKey
 
-      
+
       if (isCmdOrCtrl && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setIsSearchOpen((prev) => !prev)
         return
       }
 
-      
+
       if (isCmdOrCtrl && (e.key === '/' || e.key === ',')) {
         e.preventDefault()
         setDrawerInitialView('settings')
@@ -683,28 +734,28 @@ export function ChatWidget() {
         return
       }
 
-      
+
       if (isCmdOrCtrl && e.key.toLowerCase() === 'd') {
         e.preventDefault()
         handleToggleNightMode(!isNightMode)
         return
       }
 
-      
+
       if (isCmdOrCtrl && e.key.toLowerCase() === 'e') {
         e.preventDefault()
         setShowEmojiPicker((prev) => !prev)
         return
       }
 
-      
+
       if (isCmdOrCtrl && e.key.toLowerCase() === 'u') {
         e.preventDefault()
         setShowAttachMenu((prev) => !prev)
         return
       }
 
-      
+
       if (isAlt && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault()
         setChats((currentChats) => {
@@ -720,7 +771,7 @@ export function ChatWidget() {
         return
       }
 
-      
+
       if (e.key === 'ArrowLeft' && previewMedia) {
         handleNavigateMedia('prev')
         return
@@ -730,7 +781,7 @@ export function ChatWidget() {
         return
       }
 
-      
+
       if (e.key === 'Escape') {
         if (previewMedia) {
           setPreviewMedia(null)
@@ -786,8 +837,8 @@ export function ChatWidget() {
     handleNavigateMedia,
   ])
 
-  
-  
+
+
 
   const selectChat = (id: string) => {
     setSelectedChatId(id)
@@ -806,7 +857,7 @@ export function ChatWidget() {
     return DEFAULT_TRENDING_GIFS.filter((g) => g.tag === activeGifCategory)
   }, [customGifs, activeGifCategory])
 
-  
+
   const monthNames = [
     'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
     'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
@@ -866,9 +917,9 @@ export function ChatWidget() {
     const query = searchQuery.toLowerCase().trim()
     const matchesText = query
       ? msg.text.toLowerCase().includes(query) ||
-        (msg.fileName && msg.fileName.toLowerCase().includes(query)) ||
-        (msg.poll && msg.poll.question.toLowerCase().includes(query)) ||
-        (msg.checklist && msg.checklist.title.toLowerCase().includes(query))
+      (msg.fileName && msg.fileName.toLowerCase().includes(query)) ||
+      (msg.poll && msg.poll.question.toLowerCase().includes(query)) ||
+      (msg.checklist && msg.checklist.title.toLowerCase().includes(query))
       : true
 
     // 2. Date Filter
@@ -878,11 +929,85 @@ export function ChatWidget() {
     return matchesText && matchesDate
   })
 
+  // Debounced search for users by tag or username
+  useEffect(() => {
+    const query = sidebarSearch.trim()
+    if (!query) {
+      setFoundUsers([])
+      return
+    }
+
+    const timer = setTimeout(() => {
+      setIsSearchingUsers(true)
+      searchUsers(query)
+        .then((users) => {
+          const others = (users || []).filter((u) => u.id !== currentUser.id && u.username !== currentUser.username)
+          setFoundUsers(others)
+        })
+        .catch(() => {
+          setFoundUsers([])
+        })
+        .finally(() => {
+          setIsSearchingUsers(false)
+        })
+    }, 200)
+
+    return () => clearTimeout(timer)
+  }, [sidebarSearch, currentUser.id, currentUser.username])
+
+  const handleStartChatWithUser = async (user: User) => {
+    const tagDisplay = user.userTag ? (user.userTag.startsWith('@') ? user.userTag : `@${user.userTag}`) : ''
+    const existing = chats.find((c) => c.id === user.id || c.name === user.username || (tagDisplay && c.tag === tagDisplay))
+    if (existing) {
+      selectChat(existing.id)
+      setSidebarSearch('')
+      return
+    }
+
+    try {
+      const room = await createRoom(user.username, 'DIRECT')
+      const newChat: Chat = {
+        id: room.id,
+        name: room.name || user.username,
+        avatar: user.avatar || '👨‍💻',
+        lastMessage: 'Диалог начат',
+        time: 'сейчас',
+        unread: 0,
+        online: user.status === 'ONLINE',
+        statusText: tagDisplay || 'пользователь',
+        tag: tagDisplay,
+      }
+      setChats((prev) => [newChat, ...prev])
+      selectChat(newChat.id)
+    } catch {
+      const fallbackChat: Chat = {
+        id: user.id || `chat-${Date.now()}`,
+        name: user.username,
+        avatar: user.avatar || '👨‍💻',
+        lastMessage: 'Диалог начат',
+        time: 'сейчас',
+        unread: 0,
+        online: user.status === 'ONLINE',
+        statusText: tagDisplay || 'пользователь',
+        tag: tagDisplay,
+      }
+      setChats((prev) => [fallbackChat, ...prev])
+      selectChat(fallbackChat.id)
+    }
+    setSidebarSearch('')
+  }
+
   const filteredChats = sidebarSearch.trim()
-    ? chats.filter((c) =>
-      c.name.toLowerCase().includes(sidebarSearch.toLowerCase().trim()) ||
-      c.lastMessage.toLowerCase().includes(sidebarSearch.toLowerCase().trim())
-    )
+    ? chats.filter((c) => {
+      const term = sidebarSearch.toLowerCase().trim()
+      const cleanTerm = term.startsWith('@') ? term.substring(1) : term
+      return (
+        c.name.toLowerCase().includes(cleanTerm) ||
+        c.lastMessage.toLowerCase().includes(term) ||
+        (c.tag && c.tag.toLowerCase().includes(cleanTerm)) ||
+        (c.statusText && c.statusText.toLowerCase().includes(cleanTerm))
+      )
+    })
     : chats
 
   const highlightMatch = (text: string, query: string) => {
@@ -911,23 +1036,24 @@ export function ChatWidget() {
     }, 2500)
   }
 
-  
+
   const handleScrollFeed = () => {
     const el = messageContainerRef.current
     if (!el) return
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    const isAtBottom = distanceFromBottom <= 120
-    isNearBottomRef.current = isAtBottom
 
-    if (isAtBottom) {
+    const { scrollTop, scrollHeight, clientHeight } = el
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+
+    if (distanceFromBottom > 150) {
+      setShowScrollBottomBtn(true)
+      isNearBottomRef.current = false
+    } else {
       setShowScrollBottomBtn(false)
       setUnreadNewMessagesCount(0)
-    } else {
-      setShowScrollBottomBtn(true)
+      isNearBottomRef.current = true
     }
   }
 
-  
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior, block: 'end' })
@@ -942,7 +1068,7 @@ export function ChatWidget() {
     isNearBottomRef.current = true
   }
 
-  
+
   useEffect(() => {
     prevMessagesLengthRef.current = currentMessages.length
     const timer = setTimeout(() => {
@@ -951,7 +1077,7 @@ export function ChatWidget() {
     return () => clearTimeout(timer)
   }, [selectedChatId, currentMessages.length])
 
-  
+
   useEffect(() => {
     const prevCount = prevMessagesLengthRef.current
     const newCount = currentMessages.length
@@ -976,13 +1102,14 @@ export function ChatWidget() {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inputText.trim()) return
+    const textToSend = inputText.trim()
+    if (!textToSend) return
 
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     const newMessage: Message = {
       id: crypto.randomUUID(),
       sender: currentUser.username,
-      text: inputText.trim(),
+      text: textToSend,
       time: timeStr,
       isMine: true,
     }
@@ -992,16 +1119,35 @@ export function ChatWidget() {
       [selectedChatId]: [...(prev[selectedChatId] ?? []), newMessage],
     }))
     setChats((prev) =>
-      prev.map((c) => (c.id === selectedChatId ? { ...c, lastMessage: inputText.trim(), time: timeStr, unread: 0 } : c))
+      prev.map((c) => (c.id === selectedChatId ? { ...c, lastMessage: textToSend, time: timeStr, unread: 0 } : c))
     )
     setInputText('')
+
+    // Persist to backend database if room is not static HeyChat!
+    if (selectedChatId && selectedChatId !== '1') {
+      sendRoomMessage(selectedChatId, textToSend, 'TEXT')
+        .then((serverMsg) => {
+          if (serverMsg?.id) {
+            setMessages((prev) => {
+              const list = prev[selectedChatId] || []
+              return {
+                ...prev,
+                [selectedChatId]: list.map((m) => (m.id === newMessage.id ? { ...m, id: serverMsg.id } : m)),
+              }
+            })
+          }
+        })
+        .catch((err) => {
+          console.warn('Could not persist message to database:', err)
+        })
+    }
   }
 
   const handleEmojiClick = (emoji: string) => {
     setInputText((prev) => prev + emoji)
   }
 
-  
+
   useEffect(() => {
     if (pickerTab !== 'gif') return
     const query = gifSearch.trim()
@@ -1126,7 +1272,10 @@ export function ChatWidget() {
     if (e.target) e.target.value = ''
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await logoutUser()
+    } catch {}
     router.push('/login')
   }
 
@@ -1159,11 +1308,11 @@ export function ChatWidget() {
     const blob = new Blob(
       [
         `========================================\n` +
-          `История чата: ${activeChat.name}\n` +
-          `Экспортировано: ${new Date().toLocaleString()}\n` +
-          `HeyChat Messenger\n` +
-          `========================================\n\n` +
-          log,
+        `История чата: ${activeChat.name}\n` +
+        `Экспортировано: ${new Date().toLocaleString()}\n` +
+        `HeyChat Messenger\n` +
+        `========================================\n\n` +
+        log,
       ],
       { type: 'text/plain;charset=utf-8' }
     )
@@ -1424,7 +1573,7 @@ export function ChatWidget() {
         }
       }
 
-      
+
       try {
         const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
         if (AudioCtx) {
@@ -1443,7 +1592,7 @@ export function ChatWidget() {
             if (!analyserRef.current) return
             analyserRef.current.getByteFrequencyData(dataArray)
 
-            
+
             const newBars: number[] = []
             let totalVolume = 0
             for (let i = 0; i < 17; i++) {
@@ -1454,7 +1603,7 @@ export function ChatWidget() {
             }
             setLiveWaveBars(newBars)
 
-            
+
             const avgVol = Math.min(85, Math.max(18, Math.round((totalVolume / (17 * 255)) * 85) + 15))
             if (recordedWaveDataRef.current.length < 26) {
               recordedWaveDataRef.current.push(avgVol)
@@ -1493,7 +1642,7 @@ export function ChatWidget() {
       animFrameRef.current = null
     }
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close().catch(() => {})
+      audioContextRef.current.close().catch(() => { })
       audioContextRef.current = null
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -1521,7 +1670,7 @@ export function ChatWidget() {
       animFrameRef.current = null
     }
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close().catch(() => {})
+      audioContextRef.current.close().catch(() => { })
       audioContextRef.current = null
     }
 
@@ -1561,6 +1710,14 @@ export function ChatWidget() {
         )
       )
 
+      // Persist voice message to backend database
+      if (selectedChatId && selectedChatId !== '1' && audioDataUrl) {
+        sendRoomMessage(selectedChatId, audioDataUrl, 'VOICE')
+          .catch((err) => {
+            console.warn('Could not persist voice message to database:', err)
+          })
+      }
+
       setIsRecordingVoice(false)
       setRecordingSeconds(0)
       audioChunksRef.current = []
@@ -1589,7 +1746,7 @@ export function ChatWidget() {
             peaks.push(sum / Math.max(1, blockSize))
           }
 
-          decodeCtx.close().catch(() => {})
+          decodeCtx.close().catch(() => { })
           const maxPeak = Math.max(...peaks, 0.005)
           return peaks.map((p) => Math.round((p / maxPeak) * 75 + 25))
         }
@@ -1774,15 +1931,15 @@ export function ChatWidget() {
   return (
     <div className={`flex h-screen w-full font-sans transition-colors duration-200 ${isNightMode ? 'bg-[#0f172a] text-slate-100 dark' : 'bg-slate-50 text-foreground'
       }`}>
-      
+
       <aside className={`flex w-80 flex-col border-r select-none shrink-0 transition-colors duration-200 ${isNightMode ? 'bg-[#111b21] border-slate-800' : 'bg-white border-slate-200/80'
         }`}>
-        
+
         <div className={`flex h-16 items-center justify-between px-4 shrink-0 border-b ${isNightMode ? 'border-slate-800' : 'border-slate-100/80'
           }`}>
           <HeyChatLogo size="sm" />
 
-          
+
           <button
             onClick={() => {
               setDrawerInitialView('settings')
@@ -1797,7 +1954,7 @@ export function ChatWidget() {
           </button>
         </div>
 
-        
+
         <div className="px-3.5 pt-3 pb-2 shrink-0">
           <div className="relative flex items-center">
             <MagnifyingGlass
@@ -1808,10 +1965,10 @@ export function ChatWidget() {
               type="text"
               value={sidebarSearch}
               onChange={(e) => setSidebarSearch(e.target.value)}
-              placeholder="Поиск чатов..."
+              placeholder="Поиск по чатам или @тегам..."
               className={`w-full rounded-xl pl-10 pr-9 py-2 text-[13px] border border-transparent transition-all focus:outline-none ${isNightMode
-                  ? 'bg-[#202c34] text-slate-100 placeholder:text-slate-400 focus:bg-[#25333d] focus:border-[#2b3a46]'
-                  : 'bg-slate-100/80 text-slate-900 placeholder:text-slate-400 hover:bg-slate-100 focus:bg-white focus:border-slate-200 focus:ring-4 focus:ring-slate-100'
+                ? 'bg-[#202c34] text-slate-100 placeholder:text-slate-400 focus:bg-[#25333d] focus:border-[#2b3a46]'
+                : 'bg-slate-100/80 text-slate-900 placeholder:text-slate-400 hover:bg-slate-100 focus:bg-white focus:border-slate-200 focus:ring-4 focus:ring-slate-100'
                 }`}
             />
             {sidebarSearch && (
@@ -1826,86 +1983,137 @@ export function ChatWidget() {
           </div>
         </div>
 
-        
+
         <div className="flex-1 overflow-y-auto px-2.5 py-1.5 flex flex-col gap-1">
-          {filteredChats.length === 0 ? (
+          {filteredChats.length === 0 && (!sidebarSearch || foundUsers.length === 0) && !isSearchingUsers ? (
             <div className="flex flex-col items-center justify-center py-12 text-center px-4 text-slate-400">
               <MagnifyingGlass size={28} className="mb-2 opacity-40" />
-              <p className="text-xs font-normal">Чаты не найдены</p>
+              <p className="text-xs font-normal">Чаты и пользователи не найдены</p>
             </div>
           ) : (
-            filteredChats.map((chat, idx) => {
-              const isSelected = chat.id === selectedChatId
-              return (
-                <button
-                  key={chat.id}
-                  onClick={() => selectChat(chat.id)}
-                  className={`group relative flex w-full items-center gap-3 p-3 rounded-2xl text-left transition-all duration-150 ${isSelected
+            <>
+              {filteredChats.map((chat, idx) => {
+                const isSelected = chat.id === selectedChatId
+                return (
+                  <button
+                    key={chat.id}
+                    onClick={() => selectChat(chat.id)}
+                    className={`group relative flex w-full items-center gap-3 p-3 rounded-2xl text-left transition-all duration-150 ${isSelected
                       ? (isNightMode ? 'bg-slate-800 text-white font-medium shadow-xs' : 'bg-slate-100/90 text-slate-900 font-medium')
                       : (isNightMode ? 'hover:bg-slate-800/60 text-slate-300' : 'hover:bg-slate-100/60 text-slate-700')
-                    }`}
-                >
-                  <div className="relative shrink-0">
-                    <UserAvatar avatar={chat.avatar} name={chat.name} colorIndex={idx} size="md" />
-                    {chat.online && (
-                      <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 shadow-xs ${isNightMode ? 'ring-[#111b21]' : 'ring-white'
-                        }`} />
+                      }`}
+                  >
+                    <div className="relative shrink-0">
+                      <UserAvatar avatar={chat.avatar} name={chat.name} colorIndex={idx} size="md" />
+                      {chat.online && (
+                        <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 shadow-xs ${isNightMode ? 'ring-[#111b21]' : 'ring-white'
+                          }`} />
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span className={`truncate text-sm tracking-tight ${isSelected
+                            ? (isNightMode ? 'font-bold text-white' : 'font-bold text-slate-900')
+                            : (isNightMode ? 'font-semibold text-slate-200' : 'font-semibold text-slate-900')
+                            }`}>
+                            {chat.name}
+                          </span>
+                          {chat.isVerified && (
+                            <SealCheck size={14} weight="fill" className="text-[#2F80ED] shrink-0" />
+                          )}
+                        </div>
+                        <span className={`shrink-0 text-[11px] font-normal ${isNightMode ? 'text-slate-500' : 'text-slate-400'
+                          }`}>
+                          {chat.time}
+                        </span>
+                      </div>
+                      <p className={`truncate text-[13px] leading-snug ${isSelected
+                        ? (isNightMode ? 'text-slate-300 font-normal' : 'text-slate-600 font-normal')
+                        : (isNightMode ? 'text-slate-400' : 'text-slate-500')
+                        }`}>
+                        {chat.lastMessage}
+                      </p>
+                    </div>
+
+                    {chat.unread > 0 && (
+                      <span className="min-w-[20px] h-5 px-1.5 flex shrink-0 items-center justify-center rounded-full bg-blue-500 text-[11px] font-bold text-white shadow-xs ml-1">
+                        {chat.unread}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+
+              {Boolean(sidebarSearch.trim()) && (
+                <div className="mt-2 pt-2 border-t border-slate-200/50 dark:border-slate-800/80">
+                  <div className="flex items-center justify-between px-2.5 py-1 mb-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Глобальный поиск (@теги)
+                    </span>
+                    {isSearchingUsers && (
+                      <span className="text-[10px] text-blue-500 font-medium animate-pulse">поиск...</span>
                     )}
                   </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-1 mb-0.5">
-                      <div className="flex items-center gap-1 min-w-0">
-                        <span className={`truncate text-sm tracking-tight ${isSelected
-                            ? (isNightMode ? 'font-bold text-white' : 'font-bold text-slate-900')
-                            : (isNightMode ? 'font-semibold text-slate-200' : 'font-semibold text-slate-900')
-                          }`}>
-                          {chat.name}
-                        </span>
-                        {chat.isVerified && (
-                          <SealCheck size={14} weight="fill" className="text-[#2F80ED] shrink-0" />
-                        )}
-                      </div>
-                      <span className={`shrink-0 text-[11px] font-normal ${isNightMode ? 'text-slate-500' : 'text-slate-400'
-                        }`}>
-                        {chat.time}
-                      </span>
-                    </div>
-                    <p className={`truncate text-[13px] leading-snug ${isSelected
-                        ? (isNightMode ? 'text-slate-300 font-normal' : 'text-slate-600 font-normal')
-                        : (isNightMode ? 'text-slate-400' : 'text-slate-500')
-                      }`}>
-                      {chat.lastMessage}
-                    </p>
-                  </div>
-
-                  {chat.unread > 0 && (
-                    <span className="min-w-[20px] h-5 px-1.5 flex shrink-0 items-center justify-center rounded-full bg-blue-500 text-[11px] font-bold text-white shadow-xs ml-1">
-                      {chat.unread}
-                    </span>
+                  {foundUsers.length === 0 && !isSearchingUsers ? (
+                    <p className="text-[11px] text-slate-400 px-3 py-1.5">Никого не найдено</p>
+                  ) : (
+                    foundUsers.map((u, idx) => {
+                      const tagFormatted = u.userTag ? (u.userTag.startsWith('@') ? u.userTag : `@${u.userTag}`) : ''
+                      return (
+                        <button
+                          key={u.id}
+                          onClick={() => handleStartChatWithUser(u)}
+                          className={`group relative flex w-full items-center gap-3 p-2.5 rounded-2xl text-left transition-all duration-150 ${
+                            isNightMode ? 'hover:bg-slate-800/80 text-slate-200' : 'hover:bg-slate-100 text-slate-800'
+                          }`}
+                        >
+                          <div className="relative shrink-0">
+                            <UserAvatar avatar={u.avatar || 'user'} name={u.username} colorIndex={idx + 2} size="md" />
+                            {u.status === 'ONLINE' && (
+                              <span className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 shadow-xs ${
+                                isNightMode ? 'ring-[#111b21]' : 'ring-white'
+                              }`} />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span className="truncate text-sm font-semibold">{u.username}</span>
+                              {tagFormatted && (
+                                <span className="text-[11px] font-mono font-medium text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded-md shrink-0">
+                                  {tagFormatted}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-400 truncate">Нажмите, чтобы начать диалог</p>
+                          </div>
+                        </button>
+                      )
+                    })
                   )}
-                </button>
-              )
-            })
+                </div>
+              )}
+            </>
           )}
         </div>
       </aside>
 
-      
+
       <main className={`flex flex-1 flex-col overflow-hidden transition-colors duration-200 ${isNightMode ? 'bg-[#0b141a]' : 'bg-slate-50'
         }`}>
-        
+
         <header className={`flex h-[64px] items-center justify-between border-b px-4 shrink-0 transition-colors duration-200 ${isNightMode ? 'bg-[#111b21] border-slate-800' : 'bg-white border-border'
           }`}>
-          
+
           <div
             onClick={() => {
               setIsProfileOpen((prev) => !prev)
               setIsSearchOpen(false)
             }}
-            className={`flex items-center gap-3 cursor-pointer p-1.5 -ml-1.5 rounded-2xl transition-all active:scale-[0.99] select-none ${
-              isNightMode ? 'hover:bg-slate-800/80' : 'hover:bg-slate-100'
-            }`}
+            className={`flex items-center gap-3 cursor-pointer p-1.5 -ml-1.5 rounded-2xl transition-all active:scale-[0.99] select-none ${isNightMode ? 'hover:bg-slate-800/80' : 'hover:bg-slate-100'
+              }`}
             title="Открыть профиль пользователя"
             role="button"
           >
@@ -1926,14 +2134,14 @@ export function ChatWidget() {
           </div>
 
           <div className="flex items-center gap-1.5 relative" ref={chatMenuRef}>
-            
+
             <button
               onClick={() => {
                 setIsSearchOpen((prev) => !prev)
               }}
               className={`flex h-9 w-9 items-center justify-center rounded-xl transition-all active:scale-95 ${isSearchOpen
-                  ? (isNightMode ? 'bg-slate-800 text-blue-400 font-semibold' : 'bg-slate-100 text-heychat font-semibold')
-                  : (isNightMode ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-100 hover:text-foreground')
+                ? (isNightMode ? 'bg-slate-800 text-blue-400 font-semibold' : 'bg-slate-100 text-heychat font-semibold')
+                : (isNightMode ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-100 hover:text-foreground')
                 }`}
               title="Поиск сообщений (⌘K)"
               aria-label="Поиск сообщений"
@@ -1941,12 +2149,12 @@ export function ChatWidget() {
               <MagnifyingGlass size={20} weight="bold" />
             </button>
 
-            
+
             <button
               onClick={() => setIsChatMenuOpen((prev) => !prev)}
               className={`flex h-9 w-9 items-center justify-center rounded-xl transition-all active:scale-95 ${isChatMenuOpen
-                  ? (isNightMode ? 'bg-slate-800 text-blue-400 font-semibold ring-2 ring-blue-500/20' : 'bg-slate-100 text-blue-600 ring-2 ring-blue-500/20')
-                  : (isNightMode ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-100 hover:text-foreground')
+                ? (isNightMode ? 'bg-slate-800 text-blue-400 font-semibold ring-2 ring-blue-500/20' : 'bg-slate-100 text-blue-600 ring-2 ring-blue-500/20')
+                : (isNightMode ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-100 hover:text-foreground')
                 }`}
               title="Действия с чатом"
               aria-label="Действия с чатом"
@@ -1954,64 +2162,59 @@ export function ChatWidget() {
               <DotsThreeVertical size={20} weight="bold" />
             </button>
 
-            
+
             {isChatMenuOpen && (
               <div
-                className={`absolute right-0 top-11 z-50 w-60 rounded-2xl border p-1.5 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 ${
-                  isNightMode
+                className={`absolute right-0 top-11 z-50 w-60 rounded-2xl border p-1.5 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 ${isNightMode
                     ? 'bg-[#18222d]/95 border-slate-700/80 text-slate-200 shadow-black/60'
                     : 'bg-white/95 border-slate-200/80 text-slate-800 shadow-slate-400/20'
-                }`}
+                  }`}
               >
-                
+
                 <button
                   type="button"
                   onClick={() => {
                     setIsChatMenuOpen(false)
                     setShowPollModal(true)
                   }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${
-                    isNightMode ? 'hover:bg-slate-800 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${isNightMode ? 'hover:bg-slate-800 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
+                    }`}
                 >
                   <ChartBar size={18} className="text-blue-500 shrink-0" weight="bold" />
                   <span>Создать опрос</span>
                 </button>
 
-                
+
                 <button
                   type="button"
                   onClick={() => {
                     setIsChatMenuOpen(false)
                     setShowChecklistModal(true)
                   }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${
-                    isNightMode ? 'hover:bg-slate-800 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${isNightMode ? 'hover:bg-slate-800 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
+                    }`}
                 >
                   <CheckCircle size={18} className="text-emerald-500 shrink-0" weight="bold" />
                   <span>Создать чек-лист</span>
                 </button>
 
-                
+
                 <button
                   type="button"
                   onClick={handleOpenWallpaperCustomizer}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${
-                    isNightMode ? 'hover:bg-slate-800 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${isNightMode ? 'hover:bg-slate-800 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
+                    }`}
                 >
                   <PaintBrush size={18} className="text-purple-500 shrink-0" weight="bold" />
                   <span>Установить обои</span>
                 </button>
 
-                
+
                 <button
                   type="button"
                   onClick={handleExportChat}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${
-                    isNightMode ? 'hover:bg-slate-800 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${isNightMode ? 'hover:bg-slate-800 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
+                    }`}
                 >
                   <Export size={18} className="text-amber-500 shrink-0" weight="bold" />
                   <span>Экспорт истории чата</span>
@@ -2019,19 +2222,18 @@ export function ChatWidget() {
 
                 <div className="h-px bg-slate-200/60 dark:bg-slate-800 my-1" />
 
-                
+
                 <button
                   type="button"
                   onClick={handleClearHistory}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${
-                    isNightMode ? 'hover:bg-slate-800 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
-                  }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left ${isNightMode ? 'hover:bg-slate-800 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
+                    }`}
                 >
                   <Broom size={18} className="text-slate-400 shrink-0" weight="bold" />
                   <span>Очистить историю</span>
                 </button>
 
-                
+
                 <button
                   type="button"
                   onClick={handleDeleteChat}
@@ -2045,16 +2247,15 @@ export function ChatWidget() {
           </div>
         </header>
 
-        
+
         {activeVoiceMsg && (
           <div
-            className={`relative flex h-10 items-center justify-between px-4 border-b select-none z-20 transition-all duration-200 animate-in slide-in-from-top-1 ${
-              isNightMode
+            className={`relative flex h-10 items-center justify-between px-4 border-b select-none z-20 transition-all duration-200 animate-in slide-in-from-top-1 ${isNightMode
                 ? 'bg-[#182533] border-slate-800 text-slate-200'
                 : 'bg-white/95 border-slate-200/90 text-slate-800 backdrop-blur-md'
-            }`}
+              }`}
           >
-            
+
             <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-slate-700/20 dark:bg-slate-700/50">
               <div
                 className="h-full bg-blue-500 transition-all duration-100"
@@ -2062,9 +2263,9 @@ export function ChatWidget() {
               />
             </div>
 
-            
+
             <div className="flex items-center gap-2.5 min-w-0">
-              
+
               <button
                 type="button"
                 onClick={handleRewindVoice}
@@ -2074,7 +2275,7 @@ export function ChatWidget() {
                 <Rewind size={17} weight="fill" />
               </button>
 
-              
+
               <button
                 type="button"
                 onClick={() =>
@@ -2094,7 +2295,7 @@ export function ChatWidget() {
                 )}
               </button>
 
-              
+
               <button
                 type="button"
                 onClick={handleFastForwardVoice}
@@ -2104,28 +2305,27 @@ export function ChatWidget() {
                 <FastForward size={17} weight="fill" />
               </button>
 
-              
+
               <div className="flex items-center gap-2 truncate text-xs ml-1">
                 <span className={`font-bold truncate ${isNightMode ? 'text-white' : 'text-slate-900'}`}>{activeVoiceMsg.sender}</span>
                 <span className={`text-[11px] truncate ${isNightMode ? 'text-slate-300' : 'text-slate-500'}`}>{activeVoiceMsg.time}</span>
               </div>
             </div>
 
-            
+
             <div className="flex items-center gap-3 shrink-0 text-xs font-mono">
-              
+
               <span className={`font-medium ${isNightMode ? 'text-slate-200' : 'text-slate-600'}`}>
                 {formatTimeSec(topBarCurrentSec)}
               </span>
 
-              
+
               <div className="relative">
                 <button
                   type="button"
                   onClick={() => setShowTopBarVolume((prev) => !prev)}
-                  className={`p-1 rounded-md transition-all active:scale-95 ${
-                    isNightMode ? 'hover:bg-slate-700/80 text-slate-300' : 'hover:bg-slate-100 text-slate-600'
-                  }`}
+                  className={`p-1 rounded-md transition-all active:scale-95 ${isNightMode ? 'hover:bg-slate-700/80 text-slate-300' : 'hover:bg-slate-100 text-slate-600'
+                    }`}
                   title={`Громкость: ${Math.round(voiceVolume * 100)}%`}
                 >
                   {voiceVolume === 0 ? (
@@ -2139,11 +2339,10 @@ export function ChatWidget() {
 
                 {showTopBarVolume && (
                   <div
-                    className={`absolute top-8 right-0 z-50 p-2.5 rounded-2xl border shadow-2xl backdrop-blur-xl flex items-center gap-2 w-36 animate-in fade-in zoom-in-95 duration-150 ${
-                      isNightMode
+                    className={`absolute top-8 right-0 z-50 p-2.5 rounded-2xl border shadow-2xl backdrop-blur-xl flex items-center gap-2 w-36 animate-in fade-in zoom-in-95 duration-150 ${isNightMode
                         ? 'bg-[#18222d] border-slate-700 text-white shadow-black/60'
                         : 'bg-white border-slate-200 text-slate-900 shadow-slate-400/30'
-                    }`}
+                      }`}
                     onClick={(e) => e.stopPropagation()}
                   >
                     <input
@@ -2162,19 +2361,18 @@ export function ChatWidget() {
                 )}
               </div>
 
-              
+
               <button
                 type="button"
                 onClick={handleCycleVoiceSpeed}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-bold border border-dashed border-slate-500/50 hover:border-solid hover:border-blue-500 transition-all active:scale-95 ${
-                  isNightMode ? 'text-slate-300 hover:text-white' : 'text-slate-700 hover:text-slate-900'
-                }`}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-bold border border-dashed border-slate-500/50 hover:border-solid hover:border-blue-500 transition-all active:scale-95 ${isNightMode ? 'text-slate-300 hover:text-white' : 'text-slate-700 hover:text-slate-900'
+                  }`}
                 title="Скорость воспроизведения"
               >
                 {voiceSpeed}X
               </button>
 
-              
+
               <button
                 type="button"
                 onClick={handleCloseTopVoiceBar}
@@ -2187,38 +2385,38 @@ export function ChatWidget() {
           </div>
         )}
 
-        
+
         <div className="flex flex-1 overflow-hidden relative">
-          
+
           <div className="relative flex flex-1 flex-col min-w-0 overflow-hidden">
-            
+
             <div
               className="absolute inset-0 transition-all duration-300 pointer-events-none z-0"
               style={{
                 ...(chatSettings.wallpaper.type === 'pattern'
                   ? {
-                      backgroundImage: `url("${chatSettings.wallpaper.value}")`,
-                      backgroundRepeat: 'repeat',
-                      backgroundSize: chatSettings.wallpaper.patternSize || '120px 120px',
-                      backgroundColor: chatSettings.wallpaper.bgColor || (isNightMode ? '#0a131a' : '#eef2f6'),
-                    }
+                    backgroundImage: `url("${chatSettings.wallpaper.value}")`,
+                    backgroundRepeat: 'repeat',
+                    backgroundSize: chatSettings.wallpaper.patternSize || '120px 120px',
+                    backgroundColor: chatSettings.wallpaper.bgColor || (isNightMode ? '#0a131a' : '#eef2f6'),
+                  }
                   : chatSettings.wallpaper.type === 'gradient'
-                  ? { background: chatSettings.wallpaper.value }
-                  : chatSettings.wallpaper.type === 'image'
-                  ? {
-                      backgroundImage: `url("${chatSettings.wallpaper.value}")`,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
-                    }
-                  : chatSettings.wallpaper.type === 'color'
-                  ? { backgroundColor: chatSettings.wallpaper.value }
-                  : { backgroundColor: isNightMode ? '#0b141a' : '#f8fafc' }),
+                    ? { background: chatSettings.wallpaper.value }
+                    : chatSettings.wallpaper.type === 'image'
+                      ? {
+                        backgroundImage: `url("${chatSettings.wallpaper.value}")`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                      }
+                      : chatSettings.wallpaper.type === 'color'
+                        ? { backgroundColor: chatSettings.wallpaper.value }
+                        : { backgroundColor: isNightMode ? '#0b141a' : '#f8fafc' }),
                 filter: (chatSettings.wallpaper.blur && chatSettings.wallpaper.blur > 0) ? `blur(${chatSettings.wallpaper.blur}px)` : undefined,
                 transform: (chatSettings.wallpaper.blur && chatSettings.wallpaper.blur > 0) ? 'scale(1.05)' : undefined,
               }}
             />
 
-            
+
             {Boolean(chatSettings.wallpaper.dim && chatSettings.wallpaper.dim > 0) && (
               <div
                 className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-200 z-0"
@@ -2226,7 +2424,7 @@ export function ChatWidget() {
               />
             )}
 
-            
+
             <div
               ref={messageContainerRef}
               onScroll={handleScrollFeed}
@@ -2246,13 +2444,12 @@ export function ChatWidget() {
                       className={`flex flex-col transition-all duration-300 ${msg.isMine ? 'items-end' : 'items-start'}`}
                     >
                       <div
-                        className={`w-full max-w-[85%] sm:max-w-sm rounded-2xl p-4 shadow-sm border transition-all ${
-                          msg.isMine
+                        className={`w-full max-w-[85%] sm:max-w-sm rounded-2xl p-4 shadow-sm border transition-all ${msg.isMine
                             ? (isNightMode ? 'bg-[#182a38] border-slate-700/80 text-white rounded-br-none' : 'bg-blue-50/90 border-blue-200/80 text-slate-900 rounded-br-none')
                             : (isNightMode ? 'bg-[#202c33]/95 border-slate-700/60 text-white rounded-bl-none' : 'bg-white border-slate-200/80 text-slate-900 rounded-bl-none')
-                        }`}
+                          }`}
                       >
-                        
+
                         <div className="flex items-start gap-2 mb-3">
                           <span className="p-1.5 rounded-lg bg-blue-500/20 text-blue-500 shrink-0">
                             <ChartBar size={18} weight="bold" />
@@ -2267,7 +2464,7 @@ export function ChatWidget() {
                           </div>
                         </div>
 
-                        
+
                         <div className="space-y-2">
                           {msg.poll.options.map((opt) => {
                             const hasVoted = opt.voters?.includes(currentUser.id)
@@ -2278,25 +2475,22 @@ export function ChatWidget() {
                                 key={opt.id}
                                 type="button"
                                 onClick={() => handleVotePoll(msg.id, opt.id)}
-                                className={`w-full relative overflow-hidden flex items-center justify-between p-2.5 rounded-xl border text-xs font-medium transition-all text-left ${
-                                  hasVoted
+                                className={`w-full relative overflow-hidden flex items-center justify-between p-2.5 rounded-xl border text-xs font-medium transition-all text-left ${hasVoted
                                     ? 'border-blue-500 bg-blue-500/10 font-bold'
                                     : (isNightMode ? 'border-slate-700/70 hover:border-slate-600 bg-slate-800/40' : 'border-slate-200 hover:border-slate-300 bg-white/70')
-                                }`}
-                              >
-                                
-                                <div
-                                  className={`absolute top-0 bottom-0 left-0 transition-all duration-500 ${
-                                    hasVoted ? 'bg-blue-500/25' : (isNightMode ? 'bg-slate-700/40' : 'bg-blue-100/60')
                                   }`}
+                              >
+
+                                <div
+                                  className={`absolute top-0 bottom-0 left-0 transition-all duration-500 ${hasVoted ? 'bg-blue-500/25' : (isNightMode ? 'bg-slate-700/40' : 'bg-blue-100/60')
+                                    }`}
                                   style={{ width: `${percentage}%` }}
                                 />
 
                                 <div className="relative z-10 flex items-center gap-2 pr-2">
                                   <span
-                                    className={`h-4 w-4 rounded-full border flex items-center justify-center shrink-0 ${
-                                      hasVoted ? 'bg-blue-500 border-blue-500 text-white' : 'border-slate-400'
-                                    }`}
+                                    className={`h-4 w-4 rounded-full border flex items-center justify-center shrink-0 ${hasVoted ? 'bg-blue-500 border-blue-500 text-white' : 'border-slate-400'
+                                      }`}
                                   >
                                     {hasVoted && <Check size={10} weight="bold" />}
                                   </span>
@@ -2312,7 +2506,7 @@ export function ChatWidget() {
                           })}
                         </div>
 
-                        
+
                         <div className="flex items-center justify-between text-[10px] text-slate-400 mt-3 pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
                           <span>Всего голосов: {msg.poll.totalVotes}</span>
                           <span>{msg.time}</span>
@@ -2333,13 +2527,12 @@ export function ChatWidget() {
                       className={`flex flex-col transition-all duration-300 ${msg.isMine ? 'items-end' : 'items-start'}`}
                     >
                       <div
-                        className={`w-full max-w-[85%] sm:max-w-sm rounded-2xl p-4 shadow-sm border transition-all ${
-                          msg.isMine
+                        className={`w-full max-w-[85%] sm:max-w-sm rounded-2xl p-4 shadow-sm border transition-all ${msg.isMine
                             ? (isNightMode ? 'bg-[#182c2a] border-emerald-800/60 text-white rounded-br-none' : 'bg-emerald-50/90 border-emerald-200 text-slate-900 rounded-br-none')
                             : (isNightMode ? 'bg-[#202c33]/95 border-slate-700/60 text-white rounded-bl-none' : 'bg-white border-slate-200/80 text-slate-900 rounded-bl-none')
-                        }`}
+                          }`}
                       >
-                        
+
                         <div className="flex items-start gap-2 mb-3">
                           <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-500 shrink-0">
                             <CheckCircle size={18} weight="bold" />
@@ -2354,23 +2547,21 @@ export function ChatWidget() {
                           </div>
                         </div>
 
-                        
+
                         <div className="space-y-1.5">
                           {msg.checklist.items.map((item) => (
                             <button
                               key={item.id}
                               type="button"
                               onClick={() => handleToggleChecklistItem(msg.id, item.id)}
-                              className={`w-full flex items-center gap-2.5 p-2 rounded-xl border text-xs font-medium transition-all text-left ${
-                                item.completed
+                              className={`w-full flex items-center gap-2.5 p-2 rounded-xl border text-xs font-medium transition-all text-left ${item.completed
                                   ? 'border-emerald-500/40 bg-emerald-500/10 text-slate-400 line-through'
                                   : (isNightMode ? 'border-slate-700/70 hover:border-slate-600 bg-slate-800/40' : 'border-slate-200 hover:border-slate-300 bg-white/70')
-                              }`}
+                                }`}
                             >
                               <span
-                                className={`h-4 w-4 rounded-md border flex items-center justify-center shrink-0 ${
-                                  item.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-400'
-                                }`}
+                                className={`h-4 w-4 rounded-md border flex items-center justify-center shrink-0 ${item.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-400'
+                                  }`}
                               >
                                 {item.completed && <Check size={11} weight="bold" />}
                               </span>
@@ -2379,7 +2570,7 @@ export function ChatWidget() {
                           ))}
                         </div>
 
-                        
+
                         <div className="flex items-center justify-end text-[10px] text-slate-400 mt-3 pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
                           <span>{msg.time}</span>
                         </div>
@@ -2400,11 +2591,10 @@ export function ChatWidget() {
                       className={`flex flex-col transition-all duration-300 ${msg.isMine ? 'items-end' : 'items-start'}`}
                     >
                       <div
-                        className={`w-72 sm:w-80 rounded-2xl p-3 shadow-sm border transition-all ${
-                          msg.isMine
+                        className={`w-72 sm:w-80 rounded-2xl p-3 shadow-sm border transition-all ${msg.isMine
                             ? `${myBubbleBg} rounded-br-none`
                             : (isNightMode ? 'bg-[#202c33]/95 border-slate-700/60 text-white rounded-bl-none' : 'bg-white border-slate-200/80 text-slate-900 rounded-bl-none')
-                        }`}
+                          }`}
                       >
                         {!msg.isMine && (
                           <p className={`mb-1 text-[11px] font-semibold ${isNightMode ? 'text-blue-400' : 'text-heychat'}`}>
@@ -2413,15 +2603,14 @@ export function ChatWidget() {
                         )}
 
                         <div className="flex items-center gap-3">
-                          
+
                           <button
                             type="button"
                             onClick={() => handleTogglePlayVoice(msg.id, msg.voice!.seconds, msg.voice?.audioUrl)}
-                            className={`h-11 w-11 rounded-full flex items-center justify-center shrink-0 shadow-md transition-all active:scale-95 ${
-                              msg.isMine
+                            className={`h-11 w-11 rounded-full flex items-center justify-center shrink-0 shadow-md transition-all active:scale-95 ${msg.isMine
                                 ? 'bg-white/20 hover:bg-white/30 text-white backdrop-blur-xs'
                                 : 'bg-blue-500 hover:bg-blue-600 text-white'
-                            }`}
+                              }`}
                             title={isPlaying ? 'Пауза' : 'Слушать голосовое'}
                           >
                             {isPlaying ? (
@@ -2431,7 +2620,7 @@ export function ChatWidget() {
                             )}
                           </button>
 
-                          
+
                           <div className="flex-1 min-w-0">
                             <div
                               className="flex items-center gap-0.5 h-7 cursor-pointer group/wave"
@@ -2449,11 +2638,10 @@ export function ChatWidget() {
                                 return (
                                   <div
                                     key={wIdx}
-                                    className={`flex-1 min-w-[2px] rounded-full transition-all duration-150 group-hover/wave:opacity-90 ${
-                                      isPlayed
+                                    className={`flex-1 min-w-[2px] rounded-full transition-all duration-150 group-hover/wave:opacity-90 ${isPlayed
                                         ? (msg.isMine ? 'bg-white' : 'bg-blue-500')
                                         : (msg.isMine ? 'bg-white/40' : (isNightMode ? 'bg-slate-600' : 'bg-slate-300'))
-                                    }`}
+                                      }`}
                                     style={{
                                       height: `${Math.min(24, Math.max(5, Math.round((heightPct / 100) * 24)))}px`,
                                     }}
@@ -2462,29 +2650,28 @@ export function ChatWidget() {
                               })}
                             </div>
 
-                            
+
                             <div className="flex items-center justify-between mt-1 text-[11px] opacity-90 font-mono gap-2 relative">
                               <span>{isPlaying ? `${Math.round((progress / 100) * msg.voice.seconds)} сек` : msg.voice.duration}</span>
 
                               <div className="flex items-center gap-1.5 shrink-0">
-                                
+
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     handleCycleVoiceSpeed()
                                   }}
-                                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-all active:scale-95 ${
-                                    msg.isMine
+                                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-all active:scale-95 ${msg.isMine
                                       ? 'bg-white/20 hover:bg-white/30 text-white'
                                       : (isNightMode ? 'bg-slate-700/80 hover:bg-slate-600 text-slate-200' : 'bg-slate-200/80 hover:bg-slate-300 text-slate-700')
-                                  }`}
+                                    }`}
                                   title="Скорость воспроизведения"
                                 >
                                   {voiceSpeed}x
                                 </button>
 
-                                
+
                                 <div className="relative">
                                   <button
                                     type="button"
@@ -2492,11 +2679,10 @@ export function ChatWidget() {
                                       e.stopPropagation()
                                       setShowVolumeForMsg(showVolumeForMsg === msg.id ? null : msg.id)
                                     }}
-                                    className={`p-1 rounded-md transition-all active:scale-95 ${
-                                      msg.isMine
+                                    className={`p-1 rounded-md transition-all active:scale-95 ${msg.isMine
                                         ? 'hover:bg-white/20 text-white'
                                         : (isNightMode ? 'hover:bg-slate-700 text-slate-300' : 'hover:bg-slate-200 text-slate-600')
-                                    }`}
+                                      }`}
                                     title={`Громкость: ${Math.round(voiceVolume * 100)}%`}
                                   >
                                     {voiceVolume === 0 ? (
@@ -2508,14 +2694,13 @@ export function ChatWidget() {
                                     )}
                                   </button>
 
-                                  
+
                                   {showVolumeForMsg === msg.id && (
                                     <div
-                                      className={`absolute bottom-6 right-0 z-30 p-2.5 rounded-2xl border shadow-2xl backdrop-blur-xl flex items-center gap-2 w-36 animate-in fade-in zoom-in-95 duration-150 ${
-                                        isNightMode
+                                      className={`absolute bottom-6 right-0 z-30 p-2.5 rounded-2xl border shadow-2xl backdrop-blur-xl flex items-center gap-2 w-36 animate-in fade-in zoom-in-95 duration-150 ${isNightMode
                                           ? 'bg-[#18222d] border-slate-700 text-white shadow-black/60'
                                           : 'bg-white border-slate-200 text-slate-900 shadow-slate-400/30'
-                                      }`}
+                                        }`}
                                       onClick={(e) => e.stopPropagation()}
                                     >
                                       <input
@@ -2566,19 +2751,19 @@ export function ChatWidget() {
                           className="relative max-w-[80%] sm:max-w-xs md:max-w-sm rounded-2xl overflow-hidden shadow-lg border border-black/10 transition-all duration-200 hover:scale-[1.01] group cursor-pointer"
                           onClick={() => handleOpenMediaViewer(msg)}
                         >
-                          
+
                           <img
                             src={msg.image}
                             alt="GIF"
                             className="w-full max-h-80 object-cover rounded-2xl block"
                           />
 
-                          
+
                           <span className="absolute top-2 left-2 bg-black/60 backdrop-blur-xs text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md tracking-wider shadow-xs select-none">
                             GIF
                           </span>
 
-                          
+
                           <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-black/55 backdrop-blur-xs text-white text-[10px] font-medium px-2 py-0.5 rounded-full shadow-md select-none">
                             <span>{msg.time}</span>
                             {msg.isMine && (
@@ -2598,11 +2783,10 @@ export function ChatWidget() {
                       className={`flex flex-col transition-all duration-300 ${msg.isMine ? 'items-end' : 'items-start'}`}
                     >
                       <div
-                        className={`max-w-[85%] sm:max-w-xs md:max-w-sm rounded-2xl p-1.5 shadow-md border transition-all ${
-                          msg.isMine
+                        className={`max-w-[85%] sm:max-w-xs md:max-w-sm rounded-2xl p-1.5 shadow-md border transition-all ${msg.isMine
                             ? `${myBubbleBg} rounded-br-none`
                             : (isNightMode ? 'bg-[#202c33]/95 border-slate-700/60 text-white rounded-bl-none' : 'bg-white border-slate-200/80 text-slate-900 rounded-bl-none')
-                        }`}
+                          }`}
                       >
                         {!msg.isMine && (
                           <p className={`px-2 pt-1 mb-1 text-[11px] font-semibold ${isNightMode ? 'text-blue-400' : 'text-heychat'}`}>
@@ -2649,8 +2833,8 @@ export function ChatWidget() {
                   >
                     <div
                       className={`max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm transition-all duration-300 ${isHighlighted
-                          ? 'ring-4 ring-amber-400/80 scale-[1.02]'
-                          : ''
+                        ? 'ring-4 ring-amber-400/80 scale-[1.02]'
+                        : ''
                         } ${msg.isMine
                           ? `${myBubbleBg} rounded-br-none text-white`
                           : (isNightMode ? 'bg-[#202c33]/95 text-slate-100 border border-slate-700/50 backdrop-blur-xs rounded-bl-none' : 'bg-white/95 text-slate-900 border border-border/60 backdrop-blur-xs rounded-bl-none')
@@ -2688,22 +2872,21 @@ export function ChatWidget() {
                   </div>
                 )
               })}
-              
+
               <div ref={messagesEndRef} className="h-0.5" />
             </div>
 
-            
+
             {showScrollBottomBtn && (
               <button
                 type="button"
                 onClick={() => scrollToBottom('smooth')}
-                className={`absolute bottom-20 right-6 z-30 flex items-center gap-1.5 py-2 px-3.5 rounded-full shadow-2xl border transition-all duration-200 active:scale-95 animate-in fade-in slide-in-from-bottom-3 select-none cursor-pointer ${
-                  unreadNewMessagesCount > 0
+                className={`absolute bottom-20 right-6 z-30 flex items-center gap-1.5 py-2 px-3.5 rounded-full shadow-2xl border transition-all duration-200 active:scale-95 animate-in fade-in slide-in-from-bottom-3 select-none cursor-pointer ${unreadNewMessagesCount > 0
                     ? 'bg-blue-500 hover:bg-blue-600 text-white border-blue-400 font-bold shadow-blue-500/30'
                     : isNightMode
-                    ? 'bg-[#18232c]/95 hover:bg-slate-800 text-slate-200 border-slate-700 backdrop-blur-md shadow-black/60'
-                    : 'bg-white/95 hover:bg-slate-50 text-slate-700 border-slate-200 backdrop-blur-md shadow-slate-300/60'
-                }`}
+                      ? 'bg-[#18232c]/95 hover:bg-slate-800 text-slate-200 border-slate-700 backdrop-blur-md shadow-black/60'
+                      : 'bg-white/95 hover:bg-slate-50 text-slate-700 border-slate-200 backdrop-blur-md shadow-slate-300/60'
+                  }`}
                 title="Прокрутить к последним сообщениям"
               >
                 <ArrowDown size={16} weight="bold" />
@@ -2720,7 +2903,7 @@ export function ChatWidget() {
               </button>
             )}
 
-            
+
             <input
               type="file"
               ref={fileInputRef}
@@ -2728,7 +2911,7 @@ export function ChatWidget() {
               className="hidden"
             />
 
-            
+
             {activeChat.isReadOnly ? (
               <div className={`border-t p-3.5 text-center text-xs font-medium flex items-center justify-center gap-2 select-none ${isNightMode ? 'border-slate-800 bg-[#111b21] text-slate-400' : 'border-border bg-slate-100/90 text-slate-500'
                 }`}>
@@ -2740,14 +2923,13 @@ export function ChatWidget() {
                 className={`relative border-t p-3 transition-colors duration-200 ${isNightMode ? 'border-slate-800 bg-[#111b21]' : 'border-border bg-white'
                   }`}
               >
-                
+
                 {showAttachMenu && (
                   <div
                     onMouseEnter={handleAttachMouseEnter}
                     onMouseLeave={handleAttachMouseLeave}
-                    className={`absolute bottom-16 left-3 z-40 w-56 rounded-2xl border p-1.5 shadow-2xl backdrop-blur-xl ring-1 ring-black/5 animate-in fade-in slide-in-from-bottom-2 duration-150 select-none ${
-                      isNightMode ? 'bg-[#18222d]/95 border-slate-700/80 text-slate-100 shadow-black/80' : 'bg-white/95 border-slate-200/80 text-slate-900 shadow-slate-400/30'
-                    }`}
+                    className={`absolute bottom-16 left-3 z-40 w-56 rounded-2xl border p-1.5 shadow-2xl backdrop-blur-xl ring-1 ring-black/5 animate-in fade-in slide-in-from-bottom-2 duration-150 select-none ${isNightMode ? 'bg-[#18222d]/95 border-slate-700/80 text-slate-100 shadow-black/80' : 'bg-white/95 border-slate-200/80 text-slate-900 shadow-slate-400/30'
+                      }`}
                   >
                     <button
                       type="button"
@@ -2755,9 +2937,8 @@ export function ChatWidget() {
                         fileInputRef.current?.click()
                         setShowAttachMenu(false)
                       }}
-                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${
-                        isNightMode ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-800 hover:bg-slate-100'
-                      }`}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${isNightMode ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-800 hover:bg-slate-100'
+                        }`}
                     >
                       <span className="p-1 rounded-lg bg-blue-500/10 text-blue-500">
                         <Image size={17} weight="bold" />
@@ -2771,9 +2952,8 @@ export function ChatWidget() {
                         fileInputRef.current?.click()
                         setShowAttachMenu(false)
                       }}
-                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${
-                        isNightMode ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-800 hover:bg-slate-100'
-                      }`}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${isNightMode ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-800 hover:bg-slate-100'
+                        }`}
                     >
                       <span className="p-1 rounded-lg bg-emerald-500/10 text-emerald-500">
                         <FileText size={17} weight="bold" />
@@ -2789,9 +2969,8 @@ export function ChatWidget() {
                         setShowAttachMenu(false)
                         setShowPollModal(true)
                       }}
-                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${
-                        isNightMode ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-800 hover:bg-slate-100'
-                      }`}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${isNightMode ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-800 hover:bg-slate-100'
+                        }`}
                     >
                       <span className="p-1 rounded-lg bg-purple-500/10 text-purple-500">
                         <ChartBar size={17} weight="bold" />
@@ -2805,9 +2984,8 @@ export function ChatWidget() {
                         setShowAttachMenu(false)
                         setShowChecklistModal(true)
                       }}
-                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${
-                        isNightMode ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-800 hover:bg-slate-100'
-                      }`}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${isNightMode ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-800 hover:bg-slate-100'
+                        }`}
                     >
                       <span className="p-1 rounded-lg bg-amber-500/10 text-amber-500">
                         <CheckCircle size={17} weight="bold" />
@@ -2817,43 +2995,40 @@ export function ChatWidget() {
                   </div>
                 )}
 
-                
+
                 {showEmojiPicker && (
                   <div
                     onMouseEnter={handleEmojiMouseEnter}
                     onMouseLeave={handleEmojiMouseLeave}
-                    className={`absolute bottom-16 right-3 z-40 w-92 sm:w-[410px] h-[520px] max-h-[82vh] flex flex-col rounded-2xl border p-3 shadow-2xl backdrop-blur-xl ring-1 ring-black/5 animate-in fade-in slide-in-from-bottom-2 duration-150 select-none ${
-                      isNightMode ? 'bg-[#18222d]/95 border-slate-700/80 text-slate-100 shadow-black/80' : 'bg-white/95 border-slate-200/80 text-slate-900 shadow-slate-400/30'
-                    }`}
+                    className={`absolute bottom-16 right-3 z-40 w-92 sm:w-[410px] h-[520px] max-h-[82vh] flex flex-col rounded-2xl border p-3 shadow-2xl backdrop-blur-xl ring-1 ring-black/5 animate-in fade-in slide-in-from-bottom-2 duration-150 select-none ${isNightMode ? 'bg-[#18222d]/95 border-slate-700/80 text-slate-100 shadow-black/80' : 'bg-white/95 border-slate-200/80 text-slate-900 shadow-slate-400/30'
+                      }`}
                   >
-                    
+
                     <div className={`flex items-center justify-between border-b pb-2.5 mb-2.5 shrink-0 ${isNightMode ? 'border-slate-800' : 'border-border/60'}`}>
                       <div className="flex gap-1.5 p-0.5 rounded-xl bg-slate-100 dark:bg-slate-800/80">
                         <button
                           type="button"
                           onClick={() => setPickerTab('emoji')}
-                          className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                            pickerTab === 'emoji'
+                          className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${pickerTab === 'emoji'
                               ? isNightMode
                                 ? 'bg-[#25333d] text-white shadow-xs'
                                 : 'bg-white text-slate-900 shadow-xs'
                               : isNightMode
-                              ? 'text-slate-400 hover:text-white'
-                              : 'text-slate-500 hover:text-slate-900'
-                          }`}
+                                ? 'text-slate-400 hover:text-white'
+                                : 'text-slate-500 hover:text-slate-900'
+                            }`}
                         >
                           😊 Эмодзи
                         </button>
                         <button
                           type="button"
                           onClick={() => setPickerTab('gif')}
-                          className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                            pickerTab === 'gif'
+                          className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${pickerTab === 'gif'
                               ? 'bg-linear-to-r from-purple-500 to-pink-500 text-white shadow-xs'
                               : isNightMode
-                              ? 'text-slate-400 hover:text-white'
-                              : 'text-slate-500 hover:text-slate-900'
-                          }`}
+                                ? 'text-slate-400 hover:text-white'
+                                : 'text-slate-500 hover:text-slate-900'
+                            }`}
                         >
                           <span>🎬 GIF</span>
                           <span className="text-[9px] px-1 py-0.2 rounded bg-black/30 font-black tracking-wider uppercase">
@@ -2865,9 +3040,8 @@ export function ChatWidget() {
                       <button
                         type="button"
                         onClick={() => setShowEmojiPicker(false)}
-                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                          isNightMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
-                        }`}
+                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${isNightMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                          }`}
                       >
                         <X size={16} weight="bold" />
                       </button>
@@ -2875,7 +3049,7 @@ export function ChatWidget() {
 
                     {pickerTab === 'emoji' ? (
                       <div className="flex flex-col flex-1 overflow-hidden gap-2">
-                        
+
                         <div className="relative flex items-center shrink-0">
                           <MagnifyingGlass size={15} className="absolute left-2.5 text-slate-400 pointer-events-none" />
                           <input
@@ -2883,11 +3057,10 @@ export function ChatWidget() {
                             value={emojiSearch}
                             onChange={(e) => setEmojiSearch(e.target.value)}
                             placeholder="Поиск эмодзи..."
-                            className={`w-full rounded-xl pl-8 pr-7 py-2 text-xs border transition-all focus:outline-none ${
-                              isNightMode
+                            className={`w-full rounded-xl pl-8 pr-7 py-2 text-xs border transition-all focus:outline-none ${isNightMode
                                 ? 'bg-[#202c34] border-slate-700 text-slate-100 placeholder:text-slate-500 focus:border-blue-500'
                                 : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-blue-500'
-                            }`}
+                              }`}
                           />
                           {emojiSearch && (
                             <button
@@ -2900,7 +3073,7 @@ export function ChatWidget() {
                           )}
                         </div>
 
-                        
+
                         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[11px] shrink-0">
                           <button
                             type="button"
@@ -2908,13 +3081,12 @@ export function ChatWidget() {
                               setEmojiSearch('')
                               setActiveEmojiCategory('all')
                             }}
-                            className={`px-2.5 py-1 rounded-full shrink-0 font-medium transition-all cursor-pointer ${
-                              !emojiSearch.trim() && activeEmojiCategory === 'all'
+                            className={`px-2.5 py-1 rounded-full shrink-0 font-medium transition-all cursor-pointer ${!emojiSearch.trim() && activeEmojiCategory === 'all'
                                 ? 'bg-blue-500 text-white font-bold shadow-xs'
                                 : isNightMode
-                                ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                            }`}
+                                  ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                              }`}
                           >
                             ✨ Все
                           </button>
@@ -2928,13 +3100,12 @@ export function ChatWidget() {
                                   setEmojiSearch('')
                                   setActiveEmojiCategory(cat.id)
                                 }}
-                                className={`px-2.5 py-1 rounded-full shrink-0 font-medium transition-all cursor-pointer flex items-center gap-1 ${
-                                  isActive
+                                className={`px-2.5 py-1 rounded-full shrink-0 font-medium transition-all cursor-pointer flex items-center gap-1 ${isActive
                                     ? 'bg-blue-500 text-white font-bold shadow-xs'
                                     : isNightMode
-                                    ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                }`}
+                                      ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                  }`}
                               >
                                 <span>{cat.icon}</span>
                                 <span>{cat.name}</span>
@@ -2943,24 +3114,23 @@ export function ChatWidget() {
                           })}
                         </div>
 
-                        
+
                         <div className="grid grid-cols-7 sm:grid-cols-8 gap-1 flex-1 overflow-y-auto p-1 rounded-xl scrollbar-thin">
                           {(() => {
                             const query = emojiSearch.trim().toLowerCase()
                             const emojisToRender = query
                               ? EMOJI_LIST.filter((e) => e.includes(query))
                               : activeEmojiCategory === 'all'
-                              ? EMOJI_LIST
-                              : EMOJI_CATEGORIES.find((c) => c.id === activeEmojiCategory)?.emojis ?? EMOJI_LIST
+                                ? EMOJI_LIST
+                                : EMOJI_CATEGORIES.find((c) => c.id === activeEmojiCategory)?.emojis ?? EMOJI_LIST
 
                             return emojisToRender.map((emoji, idx) => (
                               <button
                                 key={idx}
                                 type="button"
                                 onClick={() => handleEmojiClick(emoji)}
-                                className={`h-10 w-10 flex items-center justify-center rounded-xl text-2xl transition-all duration-150 hover:scale-125 active:scale-95 cursor-pointer ${
-                                  isNightMode ? 'hover:bg-slate-800' : 'hover:bg-slate-100'
-                                }`}
+                                className={`h-10 w-10 flex items-center justify-center rounded-xl text-2xl transition-all duration-150 hover:scale-125 active:scale-95 cursor-pointer ${isNightMode ? 'hover:bg-slate-800' : 'hover:bg-slate-100'
+                                  }`}
                               >
                                 {emoji}
                               </button>
@@ -2971,7 +3141,7 @@ export function ChatWidget() {
                     ) : (
                       /* ── GIPHY GIF TAB ── */
                       <div className="flex flex-col flex-1 overflow-hidden gap-2">
-                        
+
                         <div className="relative flex items-center shrink-0">
                           <MagnifyingGlass size={15} className="absolute left-2.5 text-slate-400 pointer-events-none" />
                           <input
@@ -2979,11 +3149,10 @@ export function ChatWidget() {
                             value={gifSearch}
                             onChange={(e) => setGifSearch(e.target.value)}
                             placeholder="Поиск GIF в GIPHY..."
-                            className={`w-full rounded-xl pl-8 pr-7 py-2 text-xs border transition-all focus:outline-none ${
-                              isNightMode
+                            className={`w-full rounded-xl pl-8 pr-7 py-2 text-xs border transition-all focus:outline-none ${isNightMode
                                 ? 'bg-[#202c34] border-slate-700 text-slate-100 placeholder:text-slate-500 focus:border-purple-500'
                                 : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-purple-500'
-                            }`}
+                              }`}
                           />
                           {gifSearch && (
                             <button
@@ -2996,7 +3165,7 @@ export function ChatWidget() {
                           )}
                         </div>
 
-                        
+
                         <div className="flex items-center gap-1 overflow-x-auto py-1 scrollbar-none shrink-0 border-b border-slate-200/40 dark:border-slate-800/60">
                           {QUICK_EMOJI_FILTERS.map((item, idx) => (
                             <button
@@ -3005,9 +3174,8 @@ export function ChatWidget() {
                               onClick={() => {
                                 setGifSearch(item.query)
                               }}
-                              className={`h-7 w-7 flex items-center justify-center rounded-lg text-sm shrink-0 transition-all hover:scale-115 active:scale-95 cursor-pointer ${
-                                isNightMode ? 'hover:bg-slate-800' : 'hover:bg-slate-100'
-                              }`}
+                              className={`h-7 w-7 flex items-center justify-center rounded-lg text-sm shrink-0 transition-all hover:scale-115 active:scale-95 cursor-pointer ${isNightMode ? 'hover:bg-slate-800' : 'hover:bg-slate-100'
+                                }`}
                               title={`Искать гифки: ${item.query}`}
                             >
                               {item.emoji}
@@ -3015,7 +3183,7 @@ export function ChatWidget() {
                           ))}
                         </div>
 
-                        
+
                         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[11px] shrink-0">
                           {GIF_CATEGORIES.map((cat) => {
                             const isActive = !gifSearch.trim() && activeGifCategory === cat.id
@@ -3027,13 +3195,12 @@ export function ChatWidget() {
                                   setGifSearch('')
                                   setActiveGifCategory(cat.id)
                                 }}
-                                className={`px-2.5 py-1 rounded-full shrink-0 font-medium transition-all cursor-pointer ${
-                                  isActive
+                                className={`px-2.5 py-1 rounded-full shrink-0 font-medium transition-all cursor-pointer ${isActive
                                     ? 'bg-purple-500 text-white font-bold shadow-xs'
                                     : isNightMode
-                                    ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                }`}
+                                      ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                  }`}
                               >
                                 {cat.name}
                               </button>
@@ -3041,7 +3208,7 @@ export function ChatWidget() {
                           })}
                         </div>
 
-                        
+
                         <div className="grid grid-cols-3 auto-rows-[92px] gap-1.5 flex-1 overflow-y-auto p-1 rounded-xl scrollbar-thin">
                           {isGifLoading && customGifs.length === 0 ? (
                             <div className="col-span-3 flex flex-col items-center justify-center py-16 text-slate-400 text-xs">
@@ -3058,9 +3225,8 @@ export function ChatWidget() {
                                 key={gif.id}
                                 type="button"
                                 onClick={() => handleSendGif(gif.url)}
-                                className={`relative group w-full h-[92px] rounded-xl overflow-hidden border transition-all duration-200 hover:scale-[1.03] active:scale-95 cursor-pointer block shrink-0 ${
-                                  isNightMode ? 'border-slate-800 bg-slate-800/60 hover:border-purple-500/60' : 'border-slate-200 bg-slate-100 hover:border-purple-400/60'
-                                }`}
+                                className={`relative group w-full h-[92px] rounded-xl overflow-hidden border transition-all duration-200 hover:scale-[1.03] active:scale-95 cursor-pointer block shrink-0 ${isNightMode ? 'border-slate-800 bg-slate-800/60 hover:border-purple-500/60' : 'border-slate-200 bg-slate-100 hover:border-purple-400/60'
+                                  }`}
                                 title={`Отправить: ${gif.title}`}
                               >
                                 <img
@@ -3081,17 +3247,16 @@ export function ChatWidget() {
                   </div>
                 )}
 
-                
+
                 {isRecordingVoice ? (
                   /* ── ACTIVE VOICE RECORDING BAR ── */
                   <div
-                    className={`flex items-center justify-between gap-3 w-full rounded-full border px-4 py-2 shadow-sm transition-all animate-in fade-in duration-200 ${
-                      isNightMode
+                    className={`flex items-center justify-between gap-3 w-full rounded-full border px-4 py-2 shadow-sm transition-all animate-in fade-in duration-200 ${isNightMode
                         ? 'bg-[#1a232c] border-rose-500/40 text-slate-100'
                         : 'bg-rose-50/80 border-rose-200 text-slate-900'
-                    }`}
+                      }`}
                   >
-                    
+
                     <div className="flex items-center gap-2.5 shrink-0">
                       <span className="flex h-3 w-3 relative">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
@@ -3104,7 +3269,7 @@ export function ChatWidget() {
                       </span>
                     </div>
 
-                    
+
                     <div className="flex-1 flex items-center justify-center gap-1 h-7 px-2 overflow-hidden">
                       {liveWaveBars.map((barHeight, i) => (
                         <div
@@ -3117,24 +3282,23 @@ export function ChatWidget() {
                       ))}
                     </div>
 
-                    
+
                     <div className="flex items-center gap-2 shrink-0">
-                      
+
                       <button
                         type="button"
                         onClick={handleCancelRecording}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all active:scale-95 ${
-                          isNightMode
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all active:scale-95 ${isNightMode
                             ? 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                             : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-                        }`}
+                          }`}
                         title="Отменить запись"
                       >
                         <Trash size={14} className="text-rose-500" />
                         <span className="hidden sm:inline">Отмена</span>
                       </button>
 
-                      
+
                       <button
                         type="button"
                         onClick={handleSendVoiceMessage}
@@ -3148,7 +3312,7 @@ export function ChatWidget() {
                 ) : (
                   /* ── STANDARD INPUT BAR (TEXT + VOICE TOGGLE) ── */
                   <div className="relative flex items-center">
-                    
+
                     <div
                       className="absolute left-2.5 top-1/2 -translate-y-1/2 z-10"
                       onMouseEnter={handleAttachMouseEnter}
@@ -3160,13 +3324,12 @@ export function ChatWidget() {
                           setShowAttachMenu((prev) => !prev)
                           setShowEmojiPicker(false)
                         }}
-                        className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-                          showAttachMenu
+                        className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${showAttachMenu
                             ? 'text-blue-500 bg-blue-500/10'
                             : isNightMode
-                            ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                            : 'text-slate-400 hover:text-slate-600 hover:bg-slate-200/60'
-                        }`}
+                              ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                              : 'text-slate-400 hover:text-slate-600 hover:bg-slate-200/60'
+                          }`}
                         title="Прикрепить файл (наведите или нажмите)"
                         aria-label="Прикрепить файл"
                       >
@@ -3190,14 +3353,13 @@ export function ChatWidget() {
                         }
                       }}
                       placeholder="Напишите сообщение или запишите голосовое..."
-                      className={`w-full rounded-full border pl-12 pr-24 py-3.5 text-sm transition-colors ${
-                        isNightMode
+                      className={`w-full rounded-full border pl-12 pr-24 py-3.5 text-sm transition-colors ${isNightMode
                           ? 'bg-slate-800/80 text-slate-100 border-slate-700 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none'
                           : 'bg-slate-50 text-foreground border-border placeholder:text-muted/60 focus:border-border-focus focus:outline-none'
-                      }`}
+                        }`}
                     />
 
-                    
+
                     <div
                       className="absolute right-12 top-1/2 -translate-y-1/2 z-10"
                       onMouseEnter={handleEmojiMouseEnter}
@@ -3209,13 +3371,12 @@ export function ChatWidget() {
                           setShowEmojiPicker((prev) => !prev)
                           setShowAttachMenu(false)
                         }}
-                        className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-                          showEmojiPicker
+                        className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${showEmojiPicker
                             ? 'text-amber-500 bg-amber-500/10'
                             : isNightMode
-                            ? 'text-slate-400 hover:text-amber-400 hover:bg-slate-800'
-                            : 'text-slate-400 hover:text-amber-500 hover:bg-slate-200/60'
-                        }`}
+                              ? 'text-slate-400 hover:text-amber-400 hover:bg-slate-800'
+                              : 'text-slate-400 hover:text-amber-500 hover:bg-slate-200/60'
+                          }`}
                         title="Стикеры и эмодзи (наведите или нажмите)"
                         aria-label="Стикеры и эмодзи"
                       >
@@ -3223,7 +3384,7 @@ export function ChatWidget() {
                       </button>
                     </div>
 
-                    
+
                     {inputText.trim().length > 0 ? (
                       <Button
                         type="submit"
@@ -3237,11 +3398,10 @@ export function ChatWidget() {
                       <button
                         type="button"
                         onClick={handleStartRecording}
-                        className={`absolute right-1.5 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full flex items-center justify-center transition-all active:scale-90 animate-in zoom-in-75 duration-150 ${
-                          isNightMode
+                        className={`absolute right-1.5 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full flex items-center justify-center transition-all active:scale-90 animate-in zoom-in-75 duration-150 ${isNightMode
                             ? 'bg-slate-800 hover:bg-slate-700 text-blue-400 hover:text-blue-300'
                             : 'bg-blue-50 hover:bg-blue-100 text-blue-600'
-                        }`}
+                          }`}
                         title="Записать голосовое сообщение"
                         aria-label="Записать голосовое сообщение"
                       >
@@ -3254,11 +3414,11 @@ export function ChatWidget() {
             )}
           </div>
 
-          
+
           {isSearchOpen && (
             <aside className={`w-80 border-l flex flex-col shrink-0 animate-in slide-in-from-right duration-200 ${isNightMode ? 'bg-[#111b21] border-slate-800 text-slate-100' : 'bg-white border-border text-foreground'
               }`}>
-              
+
               <div className={`flex h-[64px] items-center gap-3 border-b px-4 shrink-0 ${isNightMode ? 'border-slate-800' : 'border-border'
                 }`}>
                 <button
@@ -3275,21 +3435,20 @@ export function ChatWidget() {
                 <h3 className="font-semibold text-sm">Поиск сообщений</h3>
               </div>
 
-              
+
               <div className={`p-3 border-b flex items-center gap-2 shrink-0 relative ${isNightMode ? 'bg-[#111b21] border-slate-800' : 'bg-white border-border/40'
                 }`}>
-                
+
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => setShowDatePicker((prev) => !prev)}
-                    className={`flex h-9 w-9 items-center justify-center rounded-xl transition-all active:scale-95 shrink-0 ${
-                      showDatePicker || selectedSearchDate
+                    className={`flex h-9 w-9 items-center justify-center rounded-xl transition-all active:scale-95 shrink-0 ${showDatePicker || selectedSearchDate
                         ? 'bg-blue-500 text-white shadow-md ring-2 ring-blue-400/30'
                         : isNightMode
-                        ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
-                    }`}
+                          ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+                      }`}
                     title="Поиск по дате (Календарь)"
                   >
                     {selectedSearchDate ? (
@@ -3299,16 +3458,15 @@ export function ChatWidget() {
                     )}
                   </button>
 
-                  
+
                   {showDatePicker && (
                     <div
-                      className={`absolute top-11 left-0 z-50 w-72 rounded-2xl border p-3.5 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 select-none ${
-                        isNightMode
+                      className={`absolute top-11 left-0 z-50 w-72 rounded-2xl border p-3.5 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 select-none ${isNightMode
                           ? 'bg-[#18222d] border-slate-700 text-slate-100 shadow-black/80'
                           : 'bg-white border-slate-200 text-slate-900 shadow-slate-400/30'
-                      }`}
+                        }`}
                     >
-                      
+
                       <div className="flex items-center justify-between mb-2.5 px-1">
                         <button
                           type="button"
@@ -3317,9 +3475,8 @@ export function ChatWidget() {
                               new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1)
                             )
                           }
-                          className={`p-1 rounded-lg transition-colors ${
-                            isNightMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
-                          }`}
+                          className={`p-1 rounded-lg transition-colors ${isNightMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
+                            }`}
                           title="Предыдущий месяц"
                         >
                           <CaretLeft size={16} weight="bold" />
@@ -3336,16 +3493,15 @@ export function ChatWidget() {
                               new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1)
                             )
                           }
-                          className={`p-1 rounded-lg transition-colors ${
-                            isNightMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
-                          }`}
+                          className={`p-1 rounded-lg transition-colors ${isNightMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
+                            }`}
                           title="Следующий месяц"
                         >
                           <CaretRight size={16} weight="bold" />
                         </button>
                       </div>
 
-                      
+
                       <div className="flex items-center gap-1.5 mb-2.5 pb-2 border-b border-slate-200/60 dark:border-slate-800">
                         <button
                           type="button"
@@ -3353,13 +3509,12 @@ export function ChatWidget() {
                             setSelectedSearchDate(TODAY_DATE_STR)
                             setShowDatePicker(false)
                           }}
-                          className={`flex-1 py-1 px-1.5 rounded-lg text-[10px] font-semibold transition-all ${
-                            selectedSearchDate === TODAY_DATE_STR
+                          className={`flex-1 py-1 px-1.5 rounded-lg text-[10px] font-semibold transition-all ${selectedSearchDate === TODAY_DATE_STR
                               ? 'bg-blue-500 text-white'
                               : isNightMode
-                              ? 'bg-slate-800/80 hover:bg-slate-700 text-slate-300'
-                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                          }`}
+                                ? 'bg-slate-800/80 hover:bg-slate-700 text-slate-300'
+                                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                            }`}
                         >
                           Сегодня
                         </button>
@@ -3369,13 +3524,12 @@ export function ChatWidget() {
                             setSelectedSearchDate(YESTERDAY_DATE_STR)
                             setShowDatePicker(false)
                           }}
-                          className={`flex-1 py-1 px-1.5 rounded-lg text-[10px] font-semibold transition-all ${
-                            selectedSearchDate === YESTERDAY_DATE_STR
+                          className={`flex-1 py-1 px-1.5 rounded-lg text-[10px] font-semibold transition-all ${selectedSearchDate === YESTERDAY_DATE_STR
                               ? 'bg-blue-500 text-white'
                               : isNightMode
-                              ? 'bg-slate-800/80 hover:bg-slate-700 text-slate-300'
-                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                          }`}
+                                ? 'bg-slate-800/80 hover:bg-slate-700 text-slate-300'
+                                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                            }`}
                         >
                           Вчера
                         </button>
@@ -3393,21 +3547,20 @@ export function ChatWidget() {
                         )}
                       </div>
 
-                      
+
                       <div className="grid grid-cols-7 gap-1 text-center mb-1">
                         {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((d, i) => (
                           <span
                             key={i}
-                            className={`text-[10px] font-bold ${
-                              i >= 5 ? 'text-rose-400' : isNightMode ? 'text-slate-500' : 'text-slate-400'
-                            }`}
+                            className={`text-[10px] font-bold ${i >= 5 ? 'text-rose-400' : isNightMode ? 'text-slate-500' : 'text-slate-400'
+                              }`}
                           >
                             {d}
                           </span>
                         ))}
                       </div>
 
-                      
+
                       <div className="grid grid-cols-7 gap-1">
                         {calendarDays.map((dayObj, idx) => {
                           if (!dayObj) {
@@ -3424,15 +3577,14 @@ export function ChatWidget() {
                                 setSelectedSearchDate(dateStr)
                                 setShowDatePicker(false)
                               }}
-                              className={`h-7 w-7 rounded-lg flex flex-col items-center justify-center text-xs font-semibold relative transition-all active:scale-90 ${
-                                isSelected
+                              className={`h-7 w-7 rounded-lg flex flex-col items-center justify-center text-xs font-semibold relative transition-all active:scale-90 ${isSelected
                                   ? 'bg-blue-500 text-white font-bold shadow-md'
                                   : isToday
-                                  ? 'border border-blue-500 text-blue-500 font-bold'
-                                  : isNightMode
-                                  ? 'hover:bg-slate-800 text-slate-200'
-                                  : 'hover:bg-slate-100 text-slate-800'
-                              }`}
+                                    ? 'border border-blue-500 text-blue-500 font-bold'
+                                    : isNightMode
+                                      ? 'hover:bg-slate-800 text-slate-200'
+                                      : 'hover:bg-slate-100 text-slate-800'
+                                }`}
                             >
                               <span>{dayNumber}</span>
                               {hasMessages && !isSelected && (
@@ -3446,7 +3598,7 @@ export function ChatWidget() {
                   )}
                 </div>
 
-                
+
                 <div className="relative flex-1 flex items-center min-w-0">
                   <MagnifyingGlass
                     size={18}
@@ -3459,8 +3611,8 @@ export function ChatWidget() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={selectedSearchDate ? `Поиск за ${formatSearchDateTitle(selectedSearchDate)}...` : 'Поиск'}
                     className={`w-full rounded-full border pl-9 pr-8 py-2 text-xs transition-all ${isNightMode
-                        ? 'bg-[#202c34] text-slate-100 border-[#2b3a46] placeholder:text-slate-400 focus:border-[#3b4d5c] focus:bg-[#25333d] focus:outline-none'
-                        : 'bg-slate-50 text-foreground border-border placeholder:text-slate-400 focus:border-border-focus focus:bg-white focus:outline-none'
+                      ? 'bg-[#202c34] text-slate-100 border-[#2b3a46] placeholder:text-slate-400 focus:border-[#3b4d5c] focus:bg-[#25333d] focus:outline-none'
+                      : 'bg-slate-50 text-foreground border-border placeholder:text-slate-400 focus:border-border-focus focus:bg-white focus:outline-none'
                       }`}
                   />
                   {searchQuery && (
@@ -3475,11 +3627,10 @@ export function ChatWidget() {
                 </div>
               </div>
 
-              
+
               {selectedSearchDate && (
-                <div className={`px-3 py-1.5 border-b flex items-center justify-between text-[11px] ${
-                  isNightMode ? 'bg-[#18232c]/70 border-slate-800 text-slate-300' : 'bg-blue-50/80 border-blue-100 text-blue-900'
-                }`}>
+                <div className={`px-3 py-1.5 border-b flex items-center justify-between text-[11px] ${isNightMode ? 'bg-[#18232c]/70 border-slate-800 text-slate-300' : 'bg-blue-50/80 border-blue-100 text-blue-900'
+                  }`}>
                   <div className="flex items-center gap-1.5 truncate">
                     <span className="font-semibold">Фильтр по дате:</span>
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold bg-blue-500 text-white text-[10px]">
@@ -3497,7 +3648,7 @@ export function ChatWidget() {
                 </div>
               )}
 
-              
+
               <div className="flex-1 overflow-y-auto p-3">
                 {!searchQuery.trim() && !selectedSearchDate ? (
                   <div className="flex h-full items-center justify-center text-center text-xs text-slate-400 px-6 select-none leading-relaxed">
@@ -3530,8 +3681,8 @@ export function ChatWidget() {
                         key={msg.id}
                         onClick={() => scrollToMessage(msg.id)}
                         className={`w-full text-left p-3 rounded-xl border transition-all active:scale-[0.98] ${isNightMode
-                            ? 'border-slate-800 hover:bg-slate-800/80 text-slate-200'
-                            : 'border-border/40 hover:bg-slate-50 text-slate-600'
+                          ? 'border-slate-800 hover:bg-slate-800/80 text-slate-200'
+                          : 'border-border/40 hover:bg-slate-50 text-slate-600'
                           }`}
                       >
                         <div className="flex items-center justify-between text-xs font-semibold mb-1">
@@ -3554,28 +3705,25 @@ export function ChatWidget() {
             </aside>
           )}
 
-          
+
           {isProfileOpen && (
             <aside
-              className={`w-80 border-l flex flex-col shrink-0 animate-in slide-in-from-right duration-200 select-none z-20 ${
-                isNightMode ? 'bg-[#111b21] border-slate-800 text-slate-100' : 'bg-white border-border text-slate-900'
-              }`}
-            >
-              
-              <div
-                className={`flex h-[64px] items-center justify-between border-b px-4 shrink-0 ${
-                  isNightMode ? 'border-slate-800' : 'border-border'
+              className={`w-80 border-l flex flex-col shrink-0 animate-in slide-in-from-right duration-200 select-none z-20 ${isNightMode ? 'bg-[#111b21] border-slate-800 text-slate-100' : 'bg-white border-border text-slate-900'
                 }`}
+            >
+
+              <div
+                className={`flex h-[64px] items-center justify-between border-b px-4 shrink-0 ${isNightMode ? 'border-slate-800' : 'border-border'
+                  }`}
               >
                 <div className="flex items-center gap-2.5">
                   <button
                     type="button"
                     onClick={() => setIsProfileOpen(false)}
-                    className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-                      isNightMode
+                    className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${isNightMode
                         ? 'text-slate-400 hover:bg-slate-800 hover:text-white'
                         : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-                    }`}
+                      }`}
                     title="Закрыть профиль (Esc)"
                   >
                     <X size={18} weight="bold" />
@@ -3589,18 +3737,17 @@ export function ChatWidget() {
                     navigator.clipboard?.writeText(window.location.href)
                     showToast('Ссылка на профиль скопирована 📋')
                   }}
-                  className={`p-1.5 rounded-lg transition-colors ${
-                    isNightMode ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-500 hover:bg-slate-100'
-                  }`}
+                  className={`p-1.5 rounded-lg transition-colors ${isNightMode ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-500 hover:bg-slate-100'
+                    }`}
                   title="Поделиться"
                 >
                   <ShareNetwork size={18} weight="bold" />
                 </button>
               </div>
 
-              
+
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                
+
                 <div className="flex flex-col items-center text-center pt-1">
                   <div className="relative mb-3">
                     <UserAvatar avatar={activeChat.avatar} name={activeChat.name} size="xl" />
@@ -3621,7 +3768,7 @@ export function ChatWidget() {
                     {activeChat.statusText ?? (activeChat.online ? 'в сети' : 'был(а) недавно')}
                   </p>
 
-                  
+
                   <div className="grid grid-cols-3 gap-2 w-full mt-4">
                     <button
                       type="button"
@@ -3630,9 +3777,8 @@ export function ChatWidget() {
                         const inputEl = document.querySelector('input[placeholder="Написать сообщение..."]') as HTMLInputElement
                         inputEl?.focus()
                       }}
-                      className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all active:scale-95 ${
-                        isNightMode ? 'border-slate-800 bg-[#18232c]/70 hover:bg-slate-800 text-slate-200' : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
-                      }`}
+                      className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all active:scale-95 ${isNightMode ? 'border-slate-800 bg-[#18232c]/70 hover:bg-slate-800 text-slate-200' : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
+                        }`}
                     >
                       <ChatCircleDots size={20} className="text-blue-500 mb-1" weight="fill" />
                       <span className="text-[11px] font-medium">Чат</span>
@@ -3644,9 +3790,8 @@ export function ChatWidget() {
                         setNotificationsEnabled((prev) => !prev)
                         showToast(notificationsEnabled ? 'Уведомления выключены 🔕' : 'Уведомления включены 🔔')
                       }}
-                      className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all active:scale-95 ${
-                        isNightMode ? 'border-slate-800 bg-[#18232c]/70 hover:bg-slate-800 text-slate-200' : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
-                      }`}
+                      className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all active:scale-95 ${isNightMode ? 'border-slate-800 bg-[#18232c]/70 hover:bg-slate-800 text-slate-200' : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
+                        }`}
                     >
                       {notificationsEnabled ? (
                         <Bell size={20} className="text-amber-500 mb-1" weight="fill" />
@@ -3662,9 +3807,8 @@ export function ChatWidget() {
                         setIsProfileOpen(false)
                         setIsSearchOpen(true)
                       }}
-                      className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all active:scale-95 ${
-                        isNightMode ? 'border-slate-800 bg-[#18232c]/70 hover:bg-slate-800 text-slate-200' : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
-                      }`}
+                      className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all active:scale-95 ${isNightMode ? 'border-slate-800 bg-[#18232c]/70 hover:bg-slate-800 text-slate-200' : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
+                        }`}
                     >
                       <MagnifyingGlass size={20} className="text-emerald-500 mb-1" weight="bold" />
                       <span className="text-[11px] font-medium">Поиск</span>
@@ -3672,13 +3816,12 @@ export function ChatWidget() {
                   </div>
                 </div>
 
-                
+
                 <div
-                  className={`rounded-2xl p-3 border space-y-3 ${
-                    isNightMode ? 'bg-[#18222d]/60 border-slate-800/80' : 'bg-slate-50/80 border-slate-200/80'
-                  }`}
+                  className={`rounded-2xl p-3 border space-y-3 ${isNightMode ? 'bg-[#18222d]/60 border-slate-800/80' : 'bg-slate-50/80 border-slate-200/80'
+                    }`}
                 >
-                  
+
                   <div className="flex items-start gap-3">
                     <span className="p-2 rounded-xl bg-blue-500/10 text-blue-500 shrink-0 mt-0.5">
                       <Phone size={16} weight="bold" />
@@ -3691,7 +3834,7 @@ export function ChatWidget() {
                     </div>
                   </div>
 
-                  
+
                   <div className="flex items-start gap-3 pt-2 border-t border-slate-200/40 dark:border-slate-800">
                     <span className="p-2 rounded-xl bg-purple-500/10 text-purple-500 shrink-0 mt-0.5">
                       <Info size={16} weight="bold" />
@@ -3704,7 +3847,7 @@ export function ChatWidget() {
                     </div>
                   </div>
 
-                  
+
                   <div className="flex items-start gap-3 pt-2 border-t border-slate-200/40 dark:border-slate-800">
                     <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500 shrink-0 mt-0.5">
                       <At size={16} weight="bold" />
@@ -3718,45 +3861,42 @@ export function ChatWidget() {
                   </div>
                 </div>
 
-                
+
                 <div>
                   <div className="flex items-center gap-1 border-b border-slate-200/60 dark:border-slate-800 pb-1 mb-3">
                     <button
                       type="button"
                       onClick={() => setProfileActiveTab('media')}
-                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                        profileActiveTab === 'media'
+                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${profileActiveTab === 'media'
                           ? 'text-blue-500 border-b-2 border-blue-500'
                           : 'text-slate-400 hover:text-slate-200'
-                      }`}
+                        }`}
                     >
                       Медиа ({currentMessages.filter((m) => m.image).length})
                     </button>
                     <button
                       type="button"
                       onClick={() => setProfileActiveTab('files')}
-                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                        profileActiveTab === 'files'
+                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${profileActiveTab === 'files'
                           ? 'text-blue-500 border-b-2 border-blue-500'
                           : 'text-slate-400 hover:text-slate-200'
-                      }`}
+                        }`}
                     >
                       Файлы ({currentMessages.filter((m) => m.fileName).length})
                     </button>
                     <button
                       type="button"
                       onClick={() => setProfileActiveTab('voice')}
-                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                        profileActiveTab === 'voice'
+                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${profileActiveTab === 'voice'
                           ? 'text-blue-500 border-b-2 border-blue-500'
                           : 'text-slate-400 hover:text-slate-200'
-                      }`}
+                        }`}
                     >
                       Голос ({currentMessages.filter((m) => m.voice).length})
                     </button>
                   </div>
 
-                  
+
                   {profileActiveTab === 'media' && (
                     <div className="grid grid-cols-3 gap-1.5">
                       {currentMessages.filter((m) => m.image).length === 0 ? (
@@ -3791,9 +3931,8 @@ export function ChatWidget() {
                           .map((m) => (
                             <div
                               key={m.id}
-                              className={`flex items-center gap-2.5 p-2 rounded-xl border text-xs ${
-                                isNightMode ? 'border-slate-800 bg-[#18232c]/50' : 'border-slate-200 bg-slate-50'
-                              }`}
+                              className={`flex items-center gap-2.5 p-2 rounded-xl border text-xs ${isNightMode ? 'border-slate-800 bg-[#18232c]/50' : 'border-slate-200 bg-slate-50'
+                                }`}
                             >
                               <FileText size={20} className="text-emerald-500 shrink-0" />
                               <div className="min-w-0 flex-1">
@@ -3819,9 +3958,8 @@ export function ChatWidget() {
                             <div
                               key={m.id}
                               onClick={() => handleTogglePlayVoice(m.id, m.voice!.seconds, m.voice?.audioUrl)}
-                              className={`flex items-center gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-all active:scale-[0.98] ${
-                                isNightMode ? 'border-slate-800 bg-[#18232c]/50 hover:bg-slate-800' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                              }`}
+                              className={`flex items-center gap-2.5 p-2 rounded-xl border text-xs cursor-pointer transition-all active:scale-[0.98] ${isNightMode ? 'border-slate-800 bg-[#18232c]/50 hover:bg-slate-800' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                                }`}
                             >
                               <button
                                 type="button"
@@ -3840,7 +3978,7 @@ export function ChatWidget() {
                   )}
                 </div>
 
-                
+
                 <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800 space-y-1">
                   <button
                     type="button"
@@ -3875,7 +4013,7 @@ export function ChatWidget() {
         </div>
       </main>
 
-      
+
       <SidebarDrawer
         user={currentUser}
         isOpen={isDrawerOpen}
@@ -3889,17 +4027,16 @@ export function ChatWidget() {
         onUpdateChatSettings={handleUpdateChatSettings}
       />
 
-      
+
       {showPollModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div
-            className={`w-full max-w-md rounded-3xl p-6 shadow-2xl border transition-all ${
-              isNightMode
+            className={`w-full max-w-md rounded-3xl p-6 shadow-2xl border transition-all ${isNightMode
                 ? 'bg-[#18222d] border-slate-700 text-slate-100'
                 : 'bg-white border-slate-200 text-slate-900'
-            }`}
+              }`}
           >
-            
+
             <div className="flex items-center justify-between pb-4 border-b border-slate-200/60 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
                 <span className="p-2 rounded-xl bg-blue-500/10 text-blue-500">
@@ -3919,9 +4056,9 @@ export function ChatWidget() {
               </button>
             </div>
 
-            
+
             <form onSubmit={handleCreatePoll} className="space-y-4 pt-4">
-              
+
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Вопрос
@@ -3933,15 +4070,14 @@ export function ChatWidget() {
                   value={pollQuestion}
                   onChange={(e) => setPollQuestion(e.target.value)}
                   placeholder="Задайте вопрос..."
-                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm border focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition ${
-                    isNightMode
+                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm border focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition ${isNightMode
                       ? 'bg-slate-800/80 border-slate-700 placeholder:text-slate-500 text-white'
                       : 'bg-slate-50 border-slate-200 placeholder:text-slate-400 text-slate-900'
-                  }`}
+                    }`}
                 />
               </div>
 
-              
+
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Варианты ответа
@@ -3959,11 +4095,10 @@ export function ChatWidget() {
                           setPollOptions(newOpts)
                         }}
                         placeholder={`Вариант ${idx + 1}`}
-                        className={`flex-1 px-3 py-2 rounded-xl text-xs border focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition ${
-                          isNightMode
+                        className={`flex-1 px-3 py-2 rounded-xl text-xs border focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition ${isNightMode
                             ? 'bg-slate-800/80 border-slate-700 placeholder:text-slate-500 text-white'
                             : 'bg-slate-50 border-slate-200 placeholder:text-slate-400 text-slate-900'
-                        }`}
+                          }`}
                       />
                       {pollOptions.length > 2 && (
                         <button
@@ -3991,7 +4126,7 @@ export function ChatWidget() {
                 )}
               </div>
 
-              
+
               <div className={`p-3 rounded-2xl border space-y-2.5 ${isNightMode ? 'bg-slate-800/40 border-slate-800' : 'bg-slate-50 border-slate-200/60'}`}>
                 <label className="flex items-center justify-between text-xs cursor-pointer">
                   <span className="font-medium">Анонимное голосование</span>
@@ -4013,16 +4148,15 @@ export function ChatWidget() {
                 </label>
               </div>
 
-              
+
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowPollModal(false)}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold border transition ${
-                    isNightMode
+                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold border transition ${isNightMode
                       ? 'border-slate-700 hover:bg-slate-800 text-slate-300'
                       : 'border-slate-200 hover:bg-slate-100 text-slate-700'
-                  }`}
+                    }`}
                 >
                   Отмена
                 </button>
@@ -4038,17 +4172,16 @@ export function ChatWidget() {
         </div>
       )}
 
-      
+
       {showChecklistModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div
-            className={`w-full max-w-md rounded-3xl p-6 shadow-2xl border transition-all ${
-              isNightMode
+            className={`w-full max-w-md rounded-3xl p-6 shadow-2xl border transition-all ${isNightMode
                 ? 'bg-[#18222d] border-slate-700 text-slate-100'
                 : 'bg-white border-slate-200 text-slate-900'
-            }`}
+              }`}
           >
-            
+
             <div className="flex items-center justify-between pb-4 border-b border-slate-200/60 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
                 <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500">
@@ -4068,9 +4201,9 @@ export function ChatWidget() {
               </button>
             </div>
 
-            
+
             <form onSubmit={handleCreateChecklist} className="space-y-4 pt-4">
-              
+
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Название чек-листа
@@ -4082,15 +4215,14 @@ export function ChatWidget() {
                   value={checklistTitle}
                   onChange={(e) => setChecklistTitle(e.target.value)}
                   placeholder="Например: План релиза v2.0..."
-                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm border focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition ${
-                    isNightMode
+                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm border focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition ${isNightMode
                       ? 'bg-slate-800/80 border-slate-700 placeholder:text-slate-500 text-white'
                       : 'bg-slate-50 border-slate-200 placeholder:text-slate-400 text-slate-900'
-                  }`}
+                    }`}
                 />
               </div>
 
-              
+
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Пункты задач
@@ -4108,11 +4240,10 @@ export function ChatWidget() {
                           setChecklistItems(newItems)
                         }}
                         placeholder={`Пункт ${idx + 1}`}
-                        className={`flex-1 px-3 py-2 rounded-xl text-xs border focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition ${
-                          isNightMode
+                        className={`flex-1 px-3 py-2 rounded-xl text-xs border focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition ${isNightMode
                             ? 'bg-slate-800/80 border-slate-700 placeholder:text-slate-500 text-white'
                             : 'bg-slate-50 border-slate-200 placeholder:text-slate-400 text-slate-900'
-                        }`}
+                          }`}
                       />
                       {checklistItems.length > 1 && (
                         <button
@@ -4142,16 +4273,15 @@ export function ChatWidget() {
                 )}
               </div>
 
-              
+
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowChecklistModal(false)}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold border transition ${
-                    isNightMode
+                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold border transition ${isNightMode
                       ? 'border-slate-700 hover:bg-slate-800 text-slate-300'
                       : 'border-slate-200 hover:bg-slate-100 text-slate-700'
-                  }`}
+                    }`}
                 >
                   Отмена
                 </button>
@@ -4167,7 +4297,7 @@ export function ChatWidget() {
         </div>
       )}
 
-      
+
       {toastMessage && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-slate-900/95 dark:bg-slate-800/95 text-white text-xs font-semibold shadow-2xl backdrop-blur-xl border border-slate-700/60 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <Sparkle size={15} weight="fill" className="text-blue-400 shrink-0" />
@@ -4175,7 +4305,7 @@ export function ChatWidget() {
         </div>
       )}
 
-      
+
       {previewMedia && (
         <div
           className="fixed inset-0 z-50 flex flex-col items-center justify-between bg-black/90 backdrop-blur-xl animate-in fade-in duration-200 select-none"
@@ -4184,7 +4314,7 @@ export function ChatWidget() {
             setIsMediaZoomed(false)
           }}
         >
-          
+
           <div
             className="w-full flex items-center justify-between p-4 z-20 bg-linear-to-b from-black/80 via-black/40 to-transparent"
             onClick={(e) => e.stopPropagation()}
@@ -4213,12 +4343,12 @@ export function ChatWidget() {
             </div>
           </div>
 
-          
+
           <div
             className="relative flex-1 w-full flex items-center justify-center p-4 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            
+
             {currentMessages.filter((m) => Boolean(m.image)).length > 1 && (
               <button
                 type="button"
@@ -4230,18 +4360,17 @@ export function ChatWidget() {
               </button>
             )}
 
-            
-            
+
+
             <img
               src={previewMedia.url}
               alt={previewMedia.title || 'Медиа'}
-              className={`max-w-full max-h-[76vh] object-contain rounded-2xl shadow-2xl transition-transform duration-200 cursor-pointer ${
-                isMediaZoomed ? 'scale-135 cursor-zoom-out' : 'scale-100 cursor-zoom-in'
-              }`}
+              className={`max-w-full max-h-[76vh] object-contain rounded-2xl shadow-2xl transition-transform duration-200 cursor-pointer ${isMediaZoomed ? 'scale-135 cursor-zoom-out' : 'scale-100 cursor-zoom-in'
+                }`}
               onClick={() => setIsMediaZoomed((prev) => !prev)}
             />
 
-            
+
             {currentMessages.filter((m) => Boolean(m.image)).length > 1 && (
               <button
                 type="button"
@@ -4254,12 +4383,12 @@ export function ChatWidget() {
             )}
           </div>
 
-          
+
           <div
             className="w-full flex items-center justify-between px-6 py-4 z-20 bg-linear-to-t from-black/90 via-black/50 to-transparent text-white"
             onClick={(e) => e.stopPropagation()}
           >
-            
+
             <div className="flex flex-col">
               <span className="text-sm font-semibold text-white/95 truncate max-w-xs sm:max-w-md">
                 {previewMedia.title || 'GIF'}
@@ -4269,9 +4398,9 @@ export function ChatWidget() {
               </span>
             </div>
 
-            
+
             <div className="flex items-center gap-1.5 sm:gap-2">
-              
+
               <button
                 type="button"
                 onClick={() => setIsMediaZoomed((prev) => !prev)}
@@ -4281,7 +4410,7 @@ export function ChatWidget() {
                 {isMediaZoomed ? <ArrowsIn size={20} weight="bold" /> : <ArrowsOut size={20} weight="bold" />}
               </button>
 
-              
+
               <button
                 type="button"
                 onClick={() => handleShareMedia(previewMedia.url)}
@@ -4291,7 +4420,7 @@ export function ChatWidget() {
                 <ShareFat size={20} weight="bold" />
               </button>
 
-              
+
               <button
                 type="button"
                 onClick={() => handleDownloadMedia(previewMedia.url, previewMedia.title)}

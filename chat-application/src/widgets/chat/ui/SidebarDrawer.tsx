@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   X,
   ArrowLeft,
@@ -70,6 +70,14 @@ export function SidebarDrawer({
   const [avatar, setAvatar] = useState(user.avatar ?? 'user')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  useEffect(() => {
+    setUsername(user.username)
+    setUserTag(user.userTag)
+    setEmail(user.email)
+    setBio(user.bio ?? 'Разработчик HeyChat!')
+    setAvatar(user.avatar ?? 'user')
+  }, [user.username, user.userTag, user.email, user.bio, user.avatar])
+
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -79,7 +87,7 @@ export function SidebarDrawer({
       if (typeof event.target?.result === 'string') {
         const newAvatar = event.target.result
         setAvatar(newAvatar)
-        onSaveProfile?.({ ...user, avatar: newAvatar })
+        onSaveProfile?.({ ...user, username, userTag, bio, email, avatar: newAvatar })
       }
     }
     reader.readAsDataURL(file)
@@ -87,29 +95,29 @@ export function SidebarDrawer({
 
   const handleSaveName = () => {
     setEditingName(false)
-    onSaveProfile?.({ ...user, username })
+    onSaveProfile?.({ ...user, username, userTag, bio, email, avatar })
   }
 
   const handleSaveBio = () => {
     setEditingBio(false)
-    onSaveProfile?.({ ...user, bio })
+    onSaveProfile?.({ ...user, username, userTag, bio, email, avatar })
   }
 
   const handleSaveTag = () => {
     setEditingTag(false)
     const formattedTag = userTag.startsWith('@') ? userTag : `@${userTag}`
     setUserTag(formattedTag)
-    onSaveProfile?.({ ...user, userTag: formattedTag })
+    onSaveProfile?.({ ...user, username, userTag: formattedTag, bio, email, avatar })
   }
 
   const handleSaveEmail = () => {
     setEditingEmail(false)
-    onSaveProfile?.({ ...user, email })
+    onSaveProfile?.({ ...user, username, userTag, bio, email, avatar })
   }
 
   const handleSelectPresetAvatar = (opt: string) => {
     setAvatar(opt)
-    onSaveProfile?.({ ...user, avatar: opt })
+    onSaveProfile?.({ ...user, username, userTag, bio, email, avatar: opt })
   }
 
   const handleClose = () => {
@@ -210,22 +218,19 @@ export function SidebarDrawer({
       />
 
       <div
-        className={`relative z-50 flex w-full max-w-[620px] max-h-[85vh] flex-col rounded-3xl shadow-2xl overflow-hidden transition-all duration-200 ease-out ${
-          isNightMode
+        className={`relative z-50 flex w-full max-w-[620px] max-h-[85vh] flex-col rounded-3xl shadow-2xl overflow-hidden transition-all duration-200 ease-out ${isNightMode
             ? 'bg-[#111b21] text-slate-100 border border-slate-800'
             : 'bg-white text-slate-900 border border-slate-100'
-        }`}
+          }`}
       >
-        <div className={`flex h-16 items-center justify-between px-5 shrink-0 ${
-          isNightMode ? 'border-b border-slate-800' : 'border-b border-slate-100/80'
-        }`}>
+        <div className={`flex h-16 items-center justify-between px-5 shrink-0 ${isNightMode ? 'border-b border-slate-800' : 'border-b border-slate-100/80'
+          }`}>
           <div className="flex items-center gap-2.5 min-w-0">
             {currentView !== 'settings' && (
               <button
                 onClick={() => setCurrentView('settings')}
-                className={`flex h-9 w-9 items-center justify-center rounded-xl transition-all active:scale-95 ${
-                  isNightMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'
-                }`}
+                className={`flex h-9 w-9 items-center justify-center rounded-xl transition-all active:scale-95 ${isNightMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'
+                  }`}
                 title="Назад к настройкам"
               >
                 <ArrowLeft size={20} weight="bold" />
@@ -245,9 +250,8 @@ export function SidebarDrawer({
 
           <button
             onClick={handleClose}
-            className={`flex h-9 w-9 items-center justify-center rounded-xl transition-all active:scale-95 ${
-              isNightMode ? 'hover:bg-slate-800 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-700'
-            }`}
+            className={`flex h-9 w-9 items-center justify-center rounded-xl transition-all active:scale-95 ${isNightMode ? 'hover:bg-slate-800 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-700'
+              }`}
             title="Закрыть"
           >
             <X size={20} weight="bold" />
@@ -267,11 +271,10 @@ export function SidebarDrawer({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Поиск настроек..."
-                  className={`w-full rounded-xl pl-10 pr-9 py-2.5 text-[13px] border border-transparent transition-all focus:outline-none ${
-                    isNightMode
+                  className={`w-full rounded-xl pl-10 pr-9 py-2.5 text-[13px] border border-transparent transition-all focus:outline-none ${isNightMode
                       ? 'bg-slate-900 text-white placeholder:text-slate-500 focus:border-slate-700'
                       : 'bg-slate-100/80 text-slate-900 placeholder:text-slate-400 hover:bg-slate-100 focus:bg-white focus:border-slate-200 focus:ring-4 focus:ring-slate-100'
-                  }`}
+                    }`}
                 />
                 {searchQuery && (
                   <button
@@ -288,11 +291,10 @@ export function SidebarDrawer({
             <div className="flex-1 overflow-y-auto px-5 py-2">
               <div
                 onClick={() => setCurrentView('profile')}
-                className={`group relative flex items-center justify-between p-4 my-2 rounded-2xl border transition-all cursor-pointer shadow-xs ${
-                  isNightMode
+                className={`group relative flex items-center justify-between p-4 my-2 rounded-2xl border transition-all cursor-pointer shadow-xs ${isNightMode
                     ? 'bg-slate-900/80 hover:bg-slate-800/80 border-slate-800'
                     : 'bg-slate-50/90 hover:bg-slate-100/80 border-slate-200/60'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-4 min-w-0 flex-1">
                   <div className="relative shrink-0">
@@ -349,11 +351,10 @@ export function SidebarDrawer({
                       <button
                         key={item.id}
                         onClick={item.action}
-                        className={`group flex w-full items-center gap-3.5 rounded-2xl p-3 text-left transition-all duration-150 ${
-                          isNightMode
+                        className={`group flex w-full items-center gap-3.5 rounded-2xl p-3 text-left transition-all duration-150 ${isNightMode
                             ? 'hover:bg-slate-800/60 text-slate-200'
                             : 'hover:bg-slate-100/60 text-slate-800'
-                        }`}
+                          }`}
                       >
                         <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-transform group-hover:scale-105 ${item.iconBg}`}>
                           <Icon size={20} weight="bold" />
@@ -362,9 +363,8 @@ export function SidebarDrawer({
                           <span className="block text-sm font-semibold tracking-tight leading-snug">
                             {item.title}
                           </span>
-                          <span className={`block text-[12px] leading-snug mt-0.5 line-clamp-1 font-normal ${
-                            isNightMode ? 'text-slate-400' : 'text-slate-500'
-                          }`}>
+                          <span className={`block text-[12px] leading-snug mt-0.5 line-clamp-1 font-normal ${isNightMode ? 'text-slate-400' : 'text-slate-500'
+                            }`}>
                             {item.subtitle}
                           </span>
                         </div>
@@ -431,11 +431,10 @@ export function SidebarDrawer({
                       key={opt}
                       type="button"
                       onClick={() => handleSelectPresetAvatar(opt)}
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-base leading-none transition-all ${
-                        avatar === opt
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-base leading-none transition-all ${avatar === opt
                           ? 'bg-blue-500/10 text-blue-600 ring-2 ring-blue-500 font-bold scale-105'
                           : (isNightMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700')
-                      }`}
+                        }`}
                     >
                       {opt === 'user' ? <UserIcon size={18} weight="bold" className={isNightMode ? 'text-slate-300' : 'text-slate-600'} /> : opt}
                     </button>
@@ -653,13 +652,11 @@ export function SidebarDrawer({
           </div>
         )}
 
-        <div className={`px-3.5 py-3 shrink-0 space-y-1 ${
-          isNightMode ? 'border-t border-slate-800' : 'border-t border-slate-100/80'
-        }`}>
+        <div className={`px-3.5 py-3 shrink-0 space-y-1 ${isNightMode ? 'border-t border-slate-800' : 'border-t border-slate-100/80'
+          }`}>
           <div
-            className={`flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-sm font-medium transition-all ${
-              isNightMode ? 'hover:bg-slate-800/60 text-slate-300' : 'hover:bg-slate-100/60 text-slate-700'
-            }`}
+            className={`flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-sm font-medium transition-all ${isNightMode ? 'hover:bg-slate-800/60 text-slate-300' : 'hover:bg-slate-100/60 text-slate-700'
+              }`}
           >
             <div className="flex items-center gap-3">
               <Moon size={20} className={isNightMode ? 'text-slate-400' : 'text-slate-500'} />
@@ -667,14 +664,12 @@ export function SidebarDrawer({
             </div>
             <button
               onClick={() => onToggleNightMode?.(!isNightMode)}
-              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-                isNightMode ? 'bg-[#2F80ED]' : 'bg-slate-300'
-              }`}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${isNightMode ? 'bg-[#2F80ED]' : 'bg-slate-300'
+                }`}
             >
               <span
-                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  isNightMode ? 'translate-x-4' : 'translate-x-0'
-                }`}
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isNightMode ? 'translate-x-4' : 'translate-x-0'
+                  }`}
               />
             </button>
           </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import {
   X,
@@ -33,6 +33,13 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
   const [bio, setBio] = useState(user.bio ?? 'Разработчик HeyChat!')
   const [avatar, setAvatar] = useState(user.avatar ?? 'user')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    setUsername(user.username)
+    setUserTag(user.userTag)
+    setBio(user.bio ?? 'Разработчик HeyChat!')
+    setAvatar(user.avatar ?? 'user')
+  }, [user.username, user.userTag, user.bio, user.avatar])
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -70,11 +77,10 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
           <div className="flex items-center justify-end gap-3 px-4 pt-3.5 pb-1">
             <button
               onClick={() => setIsEditing(!isEditing)}
-              className={`rounded-full p-2 transition-colors ${
-                isEditing
+              className={`rounded-full p-2 transition-colors ${isEditing
                   ? 'bg-[#3390EC] text-white'
                   : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-              }`}
+                }`}
               title={isEditing ? 'Просмотр' : 'Редактировать'}
             >
               <PencilSimple size={20} weight="bold" />
@@ -198,11 +204,10 @@ export function EditProfileModal({ user, isOpen, onClose, onSave }: EditProfileM
                         e.stopPropagation()
                         setAvatar(opt)
                       }}
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm transition-all ${
-                        avatar === opt
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm transition-all ${avatar === opt
                           ? 'bg-[#69a1c8] text-white font-bold ring-2 ring-[#69a1c8]'
                           : 'bg-[#242F3D] hover:bg-slate-700 text-slate-300'
-                      }`}
+                        }`}
                     >
                       {opt === 'user' ? <UserIcon size={16} weight="bold" /> : opt}
                     </button>

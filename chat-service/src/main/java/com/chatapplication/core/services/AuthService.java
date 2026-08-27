@@ -125,12 +125,45 @@ public class AuthService {
         });
     }
 
+    public AuthResponse.UserResponse updateProfile(UUID userId, com.chatapplication.core.dtos.UpdateProfileRequest request) {
+        log.info("Обновление профиля пользователя: {}", userId);
+
+        AppUser user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+
+        if (request.getUsername() != null && !request.getUsername().isBlank()) {
+            user.setUsername(request.getUsername().trim());
+        }
+
+        if (request.getUserTag() != null && !request.getUserTag().isBlank()) {
+            String newTag = request.getUserTag().trim();
+            final UUID currentId = user.getId();
+            userRepository.findByUserTag(newTag).ifPresent(existing -> {
+                if (!existing.getId().equals(currentId)) {
+                    throw new IllegalArgumentException("Тег уже занят: " + newTag);
+                }
+            });
+            user.setUserTag(newTag);
+        }
+
+        user = userRepository.save(user);
+        log.info("Пользователь {} обновил тег на: {}", user.getUsername(), user.getUserTag());
+
+        return AuthResponse.UserResponse.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .userTag(user.getUserTag())
+                .email(user.getEmail())
+                .build();
+    }
+
     private String generateUserTag(String username) {
-        String baseTag = "user" + System.currentTimeMillis() % 100000;
+        long randomNum = 10000L + (System.currentTimeMillis() % 90000L);
+        String baseTag = String.valueOf(randomNum);
         if (userRepository.findByUserTag(baseTag).isEmpty()) {
             return baseTag;
         }
-        return username.toLowerCase().replaceAll("[^a-z0-9]", "") + "01";
+        return String.valueOf(10000L + (long)(Math.random() * 90000L));
     }
 
     private void logActivity(AppUser user, ActivityType type) {

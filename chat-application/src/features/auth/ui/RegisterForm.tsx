@@ -162,8 +162,12 @@ export function RegisterForm() {
                 : 'bg-error-bg text-error-text'
             }`}
           >
-            <span>{isSuccess ? '✓' : '✕'}</span>
-            <span>{message}</span>
+            {isSuccess ? (
+              '✓'
+            ) : (
+              <>❗<span className="font-medium ml-1">Произошла ошибка:</span></>
+            )}
+            <span className="ml-2">{message}</span>
           </div>
         )}
 

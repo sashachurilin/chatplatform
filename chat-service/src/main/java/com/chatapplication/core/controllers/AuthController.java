@@ -31,10 +31,16 @@ public class AuthController {
     private final UserRepository userRepository;
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
         log.info("Запрос на регистрацию: {}", request.getUsername());
-        AuthResponse response = authService.register(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        try {
+            AuthResponse response = authService.register(request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (IllegalArgumentException e) {
+            log.warn("Регистрация не удалась: {}", e.getMessage());
+            // Return conflict status with a clear message
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(java.util.Map.of("message", "Аккаунт уже существует в базе данных"));
+        }
     }
 
     @PostMapping("/login")
@@ -92,5 +98,57 @@ public class AuthController {
 
         log.warn("Отсутствует токен авторизации");
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+
+    @PutMapping("/profile")
+    public ResponseEntity<AuthResponse.UserResponse> updateProfile(
+            HttpServletRequest request,
+            @RequestBody com.chatapplication.core.dtos.UpdateProfileRequest updateRequest) {
+        String header = request.getHeader("Authorization");
+
+        if (header != null && header.startsWith("Bearer ")) {
+            String token = header.substring(7);
+            try {
+                String subject = jwtUtil.extractSubject(token);
+                UUID userId = UUID.fromString(subject);
+                AuthResponse.UserResponse response = authService.updateProfile(userId, updateRequest);
+                return ResponseEntity.ok(response);
+            } catch (IllegalArgumentException e) {
+                log.warn("Ошибка при обновлении профиля: {}", e.getMessage());
+                return ResponseEntity.badRequest().build();
+            } catch (Exception e) {
+                log.warn("Не удалось обновить профиль: {}", e.getMessage());
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            }
+        }
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<java.util.List<AuthResponse.UserResponse>> searchUsers(
+            @RequestParam(value = "query", required = false, defaultValue = "") String query) {
+        String cleanQuery = query.trim().startsWith("@") ? query.trim().substring(1) : query.trim();
+        java.util.List<AppUser> users;
+        if (cleanQuery.isBlank()) {
+            users = userRepository.findAll();
+        } else {
+            String lower = cleanQuery.toLowerCase();
+            users = userRepository.findAll().stream()
+                    .filter(u -> (u.getUserTag() != null && u.getUserTag().toLowerCase().contains(lower)) ||
+                                 (u.getUsername() != null && u.getUsername().toLowerCase().contains(lower)))
+                    .toList();
+        }
+
+        java.util.List<AuthResponse.UserResponse> responses = users.stream()
+                .map(u -> AuthResponse.UserResponse.builder()
+                        .id(u.getId())
+                        .username(u.getUsername())
+                        .userTag(u.getUserTag())
+                        .email(u.getEmail())
+                        .build())
+                .toList();
+
+        return ResponseEntity.ok(responses);
     }
 }
