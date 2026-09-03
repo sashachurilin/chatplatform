@@ -4,14 +4,14 @@ export const registerSchema = z
   .object({
     username: z
       .string()
-      .min(1, 'Заполните имя пользователя'),
+      .min(2, 'Имя пользователя должно содержать минимум 2 символа'),
     email: z
       .string()
       .min(1, 'Заполните email')
       .email('Некорректный email'),
     password: z
       .string()
-      .min(1, 'Заполните пароль'),
+      .min(6, 'Пароль должен содержать минимум 6 символов'),
     confirmPassword: z
       .string()
       .min(1, 'Подтвердите пароль'),
