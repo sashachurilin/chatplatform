@@ -33,34 +33,62 @@ public class UserService {
     }
 
     @Transactional
-    public AppUser updateProfile(UUID userId, String username, String userTag, String bio, String avatarUrl) {
+    public AppUser updateUsername(UUID userId, String username) {
         AppUser user = getById(userId);
 
-        if (username != null) {
-            if (userRepository.findByUsername(username).isPresent()
-                    && !username.equals(user.getUsername())) {
-                throw new IllegalArgumentException("Имя пользователя уже занято: " + username);
-            }
-            user.setUsername(username);
+        if (userRepository.findByUsername(username).isPresent()
+                && !username.equals(user.getUsername())) {
+            throw new IllegalArgumentException("Имя пользователя уже занято: " + username);
         }
 
-        if (userTag != null) {
-            if (userRepository.findByUserTag(userTag).isPresent()
-                    && !userTag.equals(user.getUserTag())) {
-                throw new IllegalArgumentException("UserTag уже занят: " + userTag);
-            }
-            user.setUserTag(userTag);
+        user.setUsername(username);
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public AppUser updateUserTag(UUID userId, String userTag) {
+        AppUser user = getById(userId);
+
+        if (userRepository.findByUserTag(userTag).isPresent()
+                && !userTag.equals(user.getUserTag())) {
+            throw new IllegalArgumentException("UserTag уже занят: " + userTag);
         }
 
-        if (bio != null) {
-            user.setBio(bio);
+        user.setUserTag(userTag);
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public AppUser updateBio(UUID userId, String bio) {
+        AppUser user = getById(userId);
+        user.setBio(bio);
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public AppUser updateAvatar(UUID userId, String avatarUrl) {
+        AppUser user = getById(userId);
+        user.setAvatarUrl(avatarUrl);
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public AppUser deleteAvatar(UUID userId) {
+        AppUser user = getById(userId);
+        user.setAvatarUrl(null);
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public AppUser updateEmail(UUID userId, String newEmail) {
+        AppUser user = getById(userId);
+
+        if (userRepository.findByEmail(newEmail).isPresent()
+                && !newEmail.equals(user.getEmail())) {
+            throw new IllegalArgumentException("Email уже занят: " + newEmail);
         }
 
-        if (avatarUrl != null) {
-            user.setAvatarUrl(avatarUrl);
-        }
-
-        user.setStatus(UserStatus.ONLINE);
+        user.setEmail(newEmail);
         return userRepository.save(user);
     }
 }

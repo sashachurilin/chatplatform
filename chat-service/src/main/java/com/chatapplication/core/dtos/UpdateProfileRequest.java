@@ -1,5 +1,6 @@
 package com.chatapplication.core.dtos;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -23,4 +24,7 @@ public class UpdateProfileRequest {
 
     @Size(max = 500, message = "URL аватара не должен превышать 500 символов")
     private String avatarUrl;
+
+    @Email(message = "Email должен быть валидным")
+    private String email;
 }

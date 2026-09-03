@@ -47,6 +47,108 @@ public class UserController {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
 
+    @PostMapping("/me/name")
+    public ResponseEntity<UserResponse> editName(
+            HttpServletRequest request,
+            @Valid @RequestBody UpdateProfileRequest requestDto) {
+
+        String header = request.getHeader("Authorization");
+
+        if (header != null && header.startsWith("Bearer ")) {
+            String token = header.substring(7);
+            try {
+                String subject = jwtUtil.extractSubject(token);
+                UUID userId = UUID.fromString(subject);
+                AppUser updatedUser = userService.updateUsername(userId, requestDto.getUsername());
+                return ResponseEntity.ok(convertToUserResponse(updatedUser));
+            } catch (IllegalArgumentException e) {
+                log.warn("Ошибка редактирования имени: {}", e.getMessage());
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(null);
+            } catch (Exception e) {
+                log.warn("Ошибка редактирования имени пользователя");
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            }
+        }
+
+        log.warn("Отсутствует токен авторизации");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+
+    @PostMapping("/me/tag")
+    public ResponseEntity<UserResponse> editTag(
+            HttpServletRequest request,
+            @Valid @RequestBody UpdateProfileRequest requestDto) {
+
+        String header = request.getHeader("Authorization");
+
+        if (header != null && header.startsWith("Bearer ")) {
+            String token = header.substring(7);
+            try {
+                String subject = jwtUtil.extractSubject(token);
+                UUID userId = UUID.fromString(subject);
+                AppUser updatedUser = userService.updateUserTag(userId, requestDto.getUserTag());
+                return ResponseEntity.ok(convertToUserResponse(updatedUser));
+            } catch (IllegalArgumentException e) {
+                log.warn("Ошибка редактирования тега: {}", e.getMessage());
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(null);
+            } catch (Exception e) {
+                log.warn("Ошибка редактирования тега пользователя");
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            }
+        }
+
+        log.warn("Отсутствует токен авторизации");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+
+    @PostMapping("/me/bio")
+    public ResponseEntity<UserResponse> editBio(
+            HttpServletRequest request,
+            @Valid @RequestBody UpdateProfileRequest requestDto) {
+
+        String header = request.getHeader("Authorization");
+
+        if (header != null && header.startsWith("Bearer ")) {
+            String token = header.substring(7);
+            try {
+                String subject = jwtUtil.extractSubject(token);
+                UUID userId = UUID.fromString(subject);
+                AppUser updatedUser = userService.updateBio(userId, requestDto.getBio());
+                return ResponseEntity.ok(convertToUserResponse(updatedUser));
+            } catch (Exception e) {
+                log.warn("Ошибка редактирования био: {}", e.getMessage());
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            }
+        }
+
+        log.warn("Отсутствует токен авторизации");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+
+    @PostMapping("/me/avatar")
+    public ResponseEntity<UserResponse> uploadAvatar(
+            HttpServletRequest request,
+            @Valid @RequestBody UpdateProfileRequest requestDto) {
+
+        String header = request.getHeader("Authorization");
+
+        if (header != null && header.startsWith("Bearer ")) {
+            String token = header.substring(7);
+            try {
+                String subject = jwtUtil.extractSubject(token);
+                UUID userId = UUID.fromString(subject);
+                AppUser updatedUser = userService.updateAvatar(userId, requestDto.getAvatarUrl());
+                return ResponseEntity.ok(convertToUserResponse(updatedUser));
+            } catch (Exception e) {
+                log.warn("Ошибка загрузки аватара: {}", e.getMessage());
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            }
+        }
+
+        log.warn("Отсутствует токен авторизации");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+
     @PutMapping("/me")
     public ResponseEntity<UserResponse> updateProfile(
             HttpServletRequest request,
@@ -59,19 +161,80 @@ public class UserController {
             try {
                 String subject = jwtUtil.extractSubject(token);
                 UUID userId = UUID.fromString(subject);
-                AppUser updatedUser = userService.updateProfile(
-                        userId,
-                        profileUpdate.getUsername(),
-                        profileUpdate.getUserTag(),
-                        profileUpdate.getBio(),
-                        profileUpdate.getAvatarUrl()
-                );
+                AppUser updatedUser = userService.getById(userId);
+
+                if (profileUpdate.getUsername() != null) {
+                    updatedUser = userService.updateUsername(userId, profileUpdate.getUsername());
+                }
+                if (profileUpdate.getUserTag() != null) {
+                    updatedUser = userService.updateUserTag(userId, profileUpdate.getUserTag());
+                }
+                if (profileUpdate.getBio() != null) {
+                    updatedUser = userService.updateBio(userId, profileUpdate.getBio());
+                }
+                if (profileUpdate.getAvatarUrl() != null) {
+                    updatedUser = userService.updateAvatar(userId, profileUpdate.getAvatarUrl());
+                }
+
+                if (profileUpdate.getEmail() != null) {
+                    updatedUser = userService.updateEmail(userId, profileUpdate.getEmail());
+                }
+
                 return ResponseEntity.ok(convertToUserResponse(updatedUser));
             } catch (IllegalArgumentException e) {
                 log.warn("Ошибка обновления профиля: {}", e.getMessage());
                 return ResponseEntity.status(HttpStatus.CONFLICT).body(null);
             } catch (Exception e) {
                 log.warn("Ошибка обновления профиля пользователя");
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            }
+        }
+
+        log.warn("Отсутствует токен авторизации");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+
+    @PostMapping("/me/email")
+    public ResponseEntity<UserResponse> editEmail(
+            HttpServletRequest request,
+            @Valid @RequestBody UpdateProfileRequest requestDto) {
+
+        String header = request.getHeader("Authorization");
+
+        if (header != null && header.startsWith("Bearer ")) {
+            String token = header.substring(7);
+            try {
+                String subject = jwtUtil.extractSubject(token);
+                UUID userId = UUID.fromString(subject);
+                AppUser updatedUser = userService.updateEmail(userId, requestDto.getEmail());
+                return ResponseEntity.ok(convertToUserResponse(updatedUser));
+            } catch (IllegalArgumentException e) {
+                log.warn("Ошибка редактирования email: {}", e.getMessage());
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(null);
+            } catch (Exception e) {
+                log.warn("Ошибка редактирования email пользователя");
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            }
+        }
+
+        log.warn("Отсутствует токен авторизации");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+
+    @PostMapping("/me/avatar/delete")
+    public ResponseEntity<UserResponse> deleteAvatar(HttpServletRequest request) {
+
+        String header = request.getHeader("Authorization");
+
+        if (header != null && header.startsWith("Bearer ")) {
+            String token = header.substring(7);
+            try {
+                String subject = jwtUtil.extractSubject(token);
+                UUID userId = UUID.fromString(subject);
+                AppUser updatedUser = userService.deleteAvatar(userId);
+                return ResponseEntity.ok(convertToUserResponse(updatedUser));
+            } catch (Exception e) {
+                log.warn("Ошибка удаления аватара: {}", e.getMessage());
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
             }
         }
